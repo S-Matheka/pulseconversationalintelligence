@@ -298,16 +298,19 @@ CUSTOMER ACTIONS:
 POLITE COMPLAINTS:
 - "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
 
-Provide a concise summary focusing ONLY on:
-1. Why the customer called (their main purpose)
-2. What triggered their call (the specific issue or concern)
-3. How the agent handled the situation
+Provide a concise summary in this exact format:
+"The customer wanted to [main purpose] due to [specific reason/trigger]."
 
-Do NOT include call duration, number of exchanges, or technical details. Focus on the customer's story and the agent's response.
+Focus ONLY on:
+1. What the customer wanted (their main purpose)
+2. Why they wanted it (the specific reason or trigger)
 
-Example format: "Customer called to cancel their membership due to poor service quality and billing issues. The agent attempted to resolve the billing problem but was unable to address the customer's concerns about service quality."
+Do NOT include call duration, number of exchanges, agent responses, or technical details. Keep it simple and direct.
 
-Write in a natural, conversational tone.`
+Examples:
+- "The customer wanted to cancel their service due to poor service quality."
+- "The customer wanted a refund due to receiving wrong items."
+- "The customer wanted to speak to a supervisor due to billing errors."`
 
   const aiSummary = await callGemmaAPI(prompt)
   
@@ -483,13 +486,16 @@ CUSTOMER ACTIONS:
 POLITE COMPLAINTS:
 - "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
 
-Provide 3-5 specific, actionable items that should be taken based on THIS conversation. Focus on:
-- Immediate follow-up actions needed for THIS customer
-- Process improvements to prevent similar issues
-- Training needs for THIS agent based on their performance
-- Customer relationship management steps for THIS situation
-- Quality assurance and monitoring steps
-- Escalation or refund processes if mentioned
+Analyze the conversation carefully and provide action items ONLY if there are specific issues that require follow-up actions.
+
+If the conversation was resolved satisfactorily with no outstanding issues, respond with: "No action needed"
+
+If there are issues that require follow-up, provide 2-4 specific, actionable items such as:
+- "Escalate to supervisor for billing dispute resolution"
+- "Process refund for wrong items received"
+- "Follow up with customer on service quality improvements"
+- "Review order fulfillment process to prevent future errors"
+- "Schedule training session for agent on conflict resolution"
 
 Make each action item specific and directly related to what was discussed in THIS conversation. Do not provide generic action items.`
 
@@ -501,12 +507,18 @@ Make each action item specific and directly related to what was discussed in THI
   
   // Parse action items from AI response
   const lines = aiActionItems.split('\n').filter((line: string) => line.trim().length > 0)
+  
+  // Check if AI responded with "No action needed"
+  if (aiActionItems.toLowerCase().includes("no action needed")) {
+    return ["No action needed"]
+  }
+  
   const actionItems = lines
     .map((line: string) => line.replace(/^\d+\.\s*/, '').replace(/^[-*]\s*/, '').trim())
     .filter((item: string) => item.length > 10 && !item.includes("AI analysis"))
-    .slice(0, 5)
+    .slice(0, 4)
   
-  return actionItems.length > 0 ? actionItems : extractFallbackActionItems(transcript)
+  return actionItems.length > 0 ? actionItems : ["No action needed"]
 }
 
 // Fallback functions

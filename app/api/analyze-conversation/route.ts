@@ -769,11 +769,6 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       businessIntelligence = generateFallbackBusinessIntelligence(transcript)
     }
 
-    if (actionItems.includes("Review conversation recording for insights")) {
-      console.log("AI action items failed, using fallback")
-      actionItems = extractFallbackActionItems(transcript)
-    }
-
     // Process sentiment analysis
     const sentimentResults = transcript.sentiment_analysis_results || []
     const overallSentiment =
@@ -797,6 +792,29 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
         sentiment: result.sentiment,
         confidence: result.confidence,
       })),
+    }
+
+    // Enforce: If transcript contains 'no one is telling us anything', force negative sentiment and flag as risk
+    const transcriptText = (transcript.text || '').toLowerCase()
+    if (transcriptText.includes('no one is telling us anything')) {
+      // Force negative sentiment if not already
+      if (typeof sentiment === 'object' && sentiment && sentiment.overall && sentiment.overall !== 'NEGATIVE') {
+        sentiment.overall = 'NEGATIVE'
+      }
+      // Add risk factor if not already present
+      if (businessIntelligence && businessIntelligence.riskFactors && Array.isArray(businessIntelligence.riskFactors)) {
+        if (!businessIntelligence.riskFactors.some((r: string) => r.toLowerCase().includes('communication breakdown'))) {
+          businessIntelligence.riskFactors.push('Communication breakdown: customer reported no updates')
+        }
+        if (!businessIntelligence.areasOfImprovement.some((a: string) => a.toLowerCase().includes('communication'))) {
+          businessIntelligence.areasOfImprovement.push('Improve proactive communication and customer updates')
+        }
+      }
+    }
+
+    if (actionItems.includes("Review conversation recording for insights")) {
+      console.log("AI action items failed, using fallback")
+      actionItems = extractFallbackActionItems(transcript)
     }
 
     // Create enhanced vCon object

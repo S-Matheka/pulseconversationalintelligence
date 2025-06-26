@@ -2,6 +2,7 @@ const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY || "4ee04704fdba4972a2
 const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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"
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+const WEBHOOK_URL = process.env.WEBHOOK_URL || "https://conversation-analyzer.netlify.app/api/webhook"
 
 // Call Google Gemma 3N 4B for enhanced analysis
 async function callGemmaAPI(prompt) {
@@ -10,7 +11,7 @@ async function callGemmaAPI(prompt) {
     
     // Add timeout to the fetch request
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 10000) // Reduced to 10 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 8000) // Reduced to 8 second timeout
     
     const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
       method: "POST",
@@ -32,7 +33,7 @@ async function callGemmaAPI(prompt) {
             content: prompt
           }
         ],
-        max_tokens: 500, // Reduced from 1000
+        max_tokens: 400, // Further reduced
         temperature: 0.3
       }),
       signal: controller.signal
@@ -846,107 +847,139 @@ function extractFallbackActionItems(transcript) {
   return actionItems
 }
 
-async function processAudio(event) {
-  try {
-    console.log("Starting audio processing...")
-    console.log("API Keys available:", {
-      assemblyai: !!ASSEMBLYAI_API_KEY,
-      openrouter: !!OPENROUTER_API_KEY
-    })
-
-    // Validate API keys
-    if (!ASSEMBLYAI_API_KEY) {
-      throw new Error("AssemblyAI API key is missing")
+// Export the handler with webhook-based processing
+exports.handler = async (event, context) => {
+  // Set function timeout to 5 minutes (300 seconds)
+  context.callbackWaitsForEmptyEventLoop = false
+  
+  // Handle CORS preflight requests
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+      body: '',
     }
-    
-    if (!OPENROUTER_API_KEY) {
-      console.warn("OpenRouter API key is missing - will use fallback analysis")
-    }
+  }
 
-    // Test AssemblyAI API key with a simple request
+  // For POST requests, start background processing and return immediately
+  if (event.httpMethod === 'POST') {
     try {
-      const testResponse = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript`, {
-        method: "GET",
-        headers: {
-          Authorization: ASSEMBLYAI_API_KEY,
-        },
-      })
-      
-      if (testResponse.status === 401) {
-        throw new Error("AssemblyAI API key is invalid or expired")
-      }
-      
-      console.log("AssemblyAI API key validation successful")
-    } catch (apiError) {
-      console.error("AssemblyAI API key validation failed:", apiError.message)
-      throw new Error(`AssemblyAI API key issue: ${apiError.message}`)
-    }
-
-    // Parse multipart form data
-    const boundary = event.headers['content-type']?.split('boundary=')[1]
-    if (!boundary) {
-      console.error("No boundary found in content-type")
-      return {
-        statusCode: 400,
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ error: 'No boundary found in content-type' }),
-      }
-    }
-
-    // Parse the multipart data manually
-    const body = Buffer.from(event.body, 'base64')
-    const parts = body.toString().split(`--${boundary}`)
-    
-    let audioBuffer = null
-    let fileName = 'audio.mp3'
-    
-    for (const part of parts) {
-      if (part.includes('name="audio"')) {
-        const lines = part.split('\r\n')
-        const contentIndex = lines.findIndex(line => line === '')
-        if (contentIndex !== -1) {
-          const content = lines.slice(contentIndex + 1, -1).join('\r\n')
-          audioBuffer = Buffer.from(content, 'binary')
-          
-          // Extract filename if present
-          const filenameMatch = part.match(/filename="([^"]+)"/)
-          if (filenameMatch) {
-            fileName = filenameMatch[1]
-          }
+      // Parse the request to get audio data
+      const boundary = event.headers['content-type']?.split('boundary=')[1]
+      if (!boundary) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ error: 'No boundary found in content-type' }),
         }
-        break
       }
-    }
 
-    if (!audioBuffer) {
-      console.error("No audio file found in request")
+      // Parse the multipart data manually
+      const body = Buffer.from(event.body, 'base64')
+      const parts = body.toString().split(`--${boundary}`)
+      
+      let audioBuffer = null
+      let fileName = 'audio.mp3'
+      
+      for (const part of parts) {
+        if (part.includes('name="audio"')) {
+          const lines = part.split('\r\n')
+          const contentIndex = lines.findIndex(line => line === '')
+          if (contentIndex !== -1) {
+            const content = lines.slice(contentIndex + 1, -1).join('\r\n')
+            audioBuffer = Buffer.from(content, 'binary')
+            
+            // Extract filename if present
+            const filenameMatch = part.match(/filename="([^"]+)"/)
+            if (filenameMatch) {
+              fileName = filenameMatch[1]
+            }
+          }
+          break
+        }
+      }
+
+      if (!audioBuffer) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ error: 'No audio file provided' }),
+        }
+      }
+
+      // Check file size (Netlify has 6MB limit)
+      if (audioBuffer.length > 6 * 1024 * 1024) {
+        return {
+          statusCode: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ error: 'Audio file too large. Maximum size is 6MB.' }),
+        }
+      }
+
+      // Start background processing
+      processAudioInBackground(audioBuffer, fileName).catch(error => {
+        console.error("Background processing error:", error)
+      })
+
+      // Return immediately with processing status
       return {
-        statusCode: 400,
+        statusCode: 202, // Accepted
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ error: 'No audio file provided' }),
+        body: JSON.stringify({
+          status: 'processing',
+          message: 'Audio processing started. Results will be available via webhook.',
+          fileName: fileName,
+          fileSize: audioBuffer.length
+        }),
       }
-    }
-
-    console.log("Audio file received, size:", audioBuffer.length, "bytes")
-
-    // Check file size (Netlify has 6MB limit)
-    if (audioBuffer.length > 6 * 1024 * 1024) {
+    } catch (error) {
+      console.error("Error starting background processing:", error)
       return {
-        statusCode: 400,
+        statusCode: 500,
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ error: 'Audio file too large. Maximum size is 6MB.' }),
+        body: JSON.stringify({ 
+          error: "Failed to start audio processing",
+          details: error.message
+        }),
       }
     }
+  }
 
+  // Handle other HTTP methods
+  return {
+    statusCode: 405,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ error: 'Method not allowed' }),
+  }
+}
+
+// Background processing function
+async function processAudioInBackground(audioBuffer, fileName) {
+  try {
+    console.log("Starting background audio processing for:", fileName)
+    
     // Upload audio to AssemblyAI
     console.log("Uploading audio to AssemblyAI...")
     const audioUrl = await uploadAudio(audioBuffer)
@@ -1023,59 +1056,60 @@ async function processAudio(event) {
     // Format transcription with improved speaker identification
     const formattedTranscription = formatTranscriptionWithSpeakers(transcript)
 
-    console.log("Analysis completed successfully")
-
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        transcription: formattedTranscription,
-        summary: summary,
-        actionItems: actionItems,
-        sentiment,
-        businessIntelligence: businessIntelligence,
-        vcon,
-      }),
+    // Send results via webhook
+    const results = {
+      status: 'completed',
+      transcription: formattedTranscription,
+      summary: summary,
+      actionItems: actionItems,
+      sentiment,
+      businessIntelligence: businessIntelligence,
+      vcon,
+      fileName: fileName,
+      timestamp: new Date().toISOString()
     }
+
+    console.log("Sending results via webhook...")
+    await sendWebhook(results)
+    console.log("Background processing completed successfully")
+
   } catch (error) {
-    console.error("Error processing audio:", error)
-    console.error("Error stack:", error.stack)
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        error: "Failed to process audio file",
-        details: error.message,
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      }),
+    console.error("Background processing failed:", error)
+    
+    // Send error via webhook
+    const errorResult = {
+      status: 'error',
+      error: error.message,
+      fileName: fileName,
+      timestamp: new Date().toISOString()
+    }
+    
+    try {
+      await sendWebhook(errorResult)
+    } catch (webhookError) {
+      console.error("Failed to send error webhook:", webhookError)
     }
   }
 }
 
-// Export the handler with timeout configuration
-exports.handler = async (event, context) => {
-  // Set function timeout to 5 minutes (300 seconds)
-  context.callbackWaitsForEmptyEventLoop = false
-  
-  // Handle CORS preflight requests
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
+// Send webhook with results
+async function sendWebhook(data) {
+  try {
+    const response = await fetch(WEBHOOK_URL, {
+      method: 'POST',
       headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Content-Type': 'application/json',
       },
-      body: '',
-    }
-  }
+      body: JSON.stringify(data),
+    })
 
-  // Process the audio file
-  return await processAudio(event)
+    if (!response.ok) {
+      throw new Error(`Webhook failed: ${response.status}`)
+    }
+
+    console.log("Webhook sent successfully")
+  } catch (error) {
+    console.error("Webhook error:", error)
+    throw error
+  }
 } 

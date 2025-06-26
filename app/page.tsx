@@ -163,9 +163,7 @@ export default function ConversationAnalyzer() {
       formData.append("audio", file)
 
       // Use the appropriate endpoint based on environment
-      const endpoint = process.env.NODE_ENV === 'production' 
-        ? '/.netlify/functions/analyze-conversation'
-        : '/api/analyze-conversation'
+      const endpoint = '/api/analyze-conversation'
       
       const response = await fetch(endpoint, {
         method: "POST",

@@ -282,14 +282,15 @@ SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment
 Look for these specific keywords and issues:
 
 EMOTION DETECTION:
-- Frustration: frustrated, annoyed, irritated, exasperated
+- Frustration: frustrated, annoyed, irritated, exasperated, neglected, ignored, not being helped, no one is telling us anything, no updates, not informed, left in the dark
 - Anger: angry, upset, fed up, tired of, sick of, had enough
 - Disappointment: disappointed, unhappy, dissatisfied
 - Stress: stressed, worried, concerned, confused, exhausted
+- Neglect/Lack of Communication: "no one is telling us anything", "no one is helping", "not being updated", "not informed", "left in the dark", "no communication", "no updates"
 
 SERVICE ISSUES:
 - Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
-- General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders
+- General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders, lack of communication, no updates
 - Billing Issues: overcharging, wrong charges, billing errors, overcharged, undercharged
 
 CUSTOMER ACTIONS:
@@ -297,6 +298,8 @@ CUSTOMER ACTIONS:
 
 POLITE COMPLAINTS:
 - "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
+
+Treat any expressions of neglect, lack of updates, or not being informed as negative sentiment, even if the language is polite or indirect.
 
 Provide a concise summary in this exact format:
 "The customer wanted to [main purpose] due to [specific reason/trigger]."
@@ -310,7 +313,8 @@ Do NOT include call duration, number of exchanges, agent responses, or technical
 Examples:
 - "The customer wanted to cancel their service due to poor service quality."
 - "The customer wanted a refund due to receiving wrong items."
-- "The customer wanted to speak to a supervisor due to billing errors."`
+- "The customer wanted to speak to a supervisor due to billing errors."
+- "The customer wanted an update due to lack of communication and feeling neglected."`
 
   const aiSummary = await callGemmaAPI(prompt)
   
@@ -366,14 +370,15 @@ SENTIMENT: ${sentimentResults.map((s: any) => `${s.sentiment}`).join(', ')}
 Look for these specific keywords and issues:
 
 EMOTION DETECTION:
-- Frustration: frustrated, annoyed, irritated, exasperated
+- Frustration: frustrated, annoyed, irritated, exasperated, neglected, ignored, not being helped, no one is telling us anything, no updates, not informed, left in the dark
 - Anger: angry, upset, fed up, tired of, sick of, had enough
 - Disappointment: disappointed, unhappy, dissatisfied
 - Stress: stressed, worried, concerned, confused, exhausted
+- Neglect/Lack of Communication: "no one is telling us anything", "no one is helping", "not being updated", "not informed", "left in the dark", "no communication", "no updates"
 
 SERVICE ISSUES:
 - Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
-- General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders
+- General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders, lack of communication, no updates
 - Billing Issues: overcharging, wrong charges, billing errors, overcharged, undercharged
 
 CUSTOMER ACTIONS:
@@ -386,8 +391,8 @@ DETECTION CATEGORIES:
 - Order Accuracy: Wrong items, fulfillment failures
 - Food Quality: Cold food, damaged items, quality control
 - Billing Accuracy: Overcharging, incorrect charges
-- Service Quality: Poor service, bad experiences
-- Customer Emotions: Subtle dissatisfaction, gentle complaints
+- Service Quality: Poor service, bad experiences, lack of communication, no updates
+- Customer Emotions: Subtle dissatisfaction, gentle complaints, feeling neglected, not being informed
 
 Analyze the agent's performance specifically:
 - Did they listen actively and acknowledge the customer's concerns?
@@ -396,6 +401,9 @@ Analyze the agent's performance specifically:
 - Did they take ownership of the problem?
 - Did they escalate appropriately when needed?
 - Did they follow up on promises made?
+- Did they keep the customer informed and provide timely updates?
+
+If the customer expressed neglect, lack of updates, or not being informed, flag this as a major risk and area for improvement.
 
 Provide business intelligence analysis in this exact JSON format with insights specific to THIS conversation:
 {
@@ -405,7 +413,7 @@ Provide business intelligence analysis in this exact JSON format with insights s
   "preventiveMeasures": ["measures to prevent similar issues from occurring"],
   "customerExperienceInsights": ["key insights about THIS customer's experience and satisfaction"],
   "operationalRecommendations": ["operational improvements needed based on THIS call"],
-  "riskFactors": ["potential risks identified including customer churn, negative reviews, escalation"],
+  "riskFactors": ["potential risks identified including customer churn, negative reviews, escalation, communication breakdown, lack of updates, customer neglect"],
   "qualityScore": {
     "overall": 85,
     "categories": {
@@ -424,6 +432,7 @@ Base the quality score specifically on how THIS agent handled THIS customer. Con
 - Problem Solving: Did the agent offer effective solutions?
 - Communication: Was the agent clear, professional, and helpful?
 - Follow Up: Did the agent ensure the customer's needs were met?
+- Did the agent keep the customer informed and provide timely updates?
 
 Make all insights specific to this conversation, not generic.`
 

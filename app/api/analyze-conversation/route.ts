@@ -621,16 +621,41 @@ function generateFallbackBusinessIntelligence(transcript: any) {
 
 function extractFallbackActionItems(transcript: any): string[] {
   const utterances = transcript.utterances || []
+  const sentimentResults = transcript.sentiment_analysis_results || []
 
   if (utterances.length === 0) {
-    return ["Review conversation recording for insights"]
+    return ["No action needed"]
   }
 
-  return [
-    "Review conversation for quality assurance",
-    "Update customer records with interaction details",
-    "Monitor for similar issues in future calls"
-  ]
+  const speakerRoles = detectSpeakerRoles(transcript)
+  const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
+  const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
+
+  const actionItems = []
+
+  // Check for specific issues that require action
+  if (customerText.includes("cancel") || customerText.includes("terminate")) {
+    actionItems.push("Process customer cancellation request")
+  }
+  
+  if (customerText.includes("refund") || customerText.includes("money back")) {
+    actionItems.push("Process refund for customer")
+  }
+  
+  if (customerText.includes("supervisor") || customerText.includes("escalate")) {
+    actionItems.push("Escalate to supervisor for resolution")
+  }
+  
+  if (customerText.includes("wrong") || customerText.includes("incorrect") || customerText.includes("damaged")) {
+    actionItems.push("Review order fulfillment process")
+  }
+  
+  if (customerText.includes("billing") || customerText.includes("overcharged")) {
+    actionItems.push("Review billing accuracy and process")
+  }
+
+  // If no specific issues found, return no action needed
+  return actionItems.length > 0 ? actionItems : ["No action needed"]
 }
 
 // Create vCon object
@@ -711,25 +736,24 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       extractEnhancedActionItems(transcript)
     ])
 
-    // Use results or fallbacks
+    // Use AI results only, with minimal fallbacks only if AI completely fails
     let summary = enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : generateFallbackSummary(transcript)
     let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateFallbackBusinessIntelligence(transcript)
     let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractFallbackActionItems(transcript)
 
-    // Use fallbacks if AI analysis failed
+    // Only use fallbacks if AI analysis completely failed (not just empty results)
     if (summary.includes("AI analysis unavailable")) {
-      console.log("Using fallback summary generation")
+      console.log("AI summary failed, using fallback")
       summary = generateFallbackSummary(transcript)
     }
 
-    if (businessIntelligence.areasOfImprovement.length === 0 && 
-        businessIntelligence.trainingOpportunities.length === 0) {
-      console.log("Using fallback business intelligence")
+    if (businessIntelligence.areasOfImprovement.includes("No conversation data available")) {
+      console.log("AI business intelligence failed, using fallback")
       businessIntelligence = generateFallbackBusinessIntelligence(transcript)
     }
 
-    if (actionItems.length === 0 || actionItems[0].includes("AI analysis unavailable")) {
-      console.log("Using fallback action items")
+    if (actionItems.includes("Review conversation recording for insights")) {
+      console.log("AI action items failed, using fallback")
       actionItems = extractFallbackActionItems(transcript)
     }
 

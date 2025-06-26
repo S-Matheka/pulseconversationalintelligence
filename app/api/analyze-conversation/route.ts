@@ -282,11 +282,11 @@ SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment
 Look for these specific keywords and issues:
 
 EMOTION DETECTION:
-- Frustration: frustrated, annoyed, irritated, exasperated, neglected, ignored, not being helped, no one is telling us anything, no updates, not informed, left in the dark
+- Frustration: frustrated, annoyed, irritated, exasperated, neglected, ignored, not being helped, no one is telling us anything, no updates, not informed, left in the dark, I wish someone would update me, I feel left out, I'm still waiting, I'm not sure what's happening, I haven't heard back, I'm not being kept in the loop, I'm waiting for a response, I'm not sure what's going on
 - Anger: angry, upset, fed up, tired of, sick of, had enough
 - Disappointment: disappointed, unhappy, dissatisfied
 - Stress: stressed, worried, concerned, confused, exhausted
-- Neglect/Lack of Communication: "no one is telling us anything", "no one is helping", "not being updated", "not informed", "left in the dark", "no communication", "no updates"
+- Neglect/Lack of Communication: "no one is telling us anything", "no one is helping", "not being updated", "not informed", "left in the dark", "no communication", "no updates", "I wish someone would update me", "I feel left out", "I'm still waiting", "I'm not sure what's happening", "I haven't heard back", "I'm not being kept in the loop", "I'm waiting for a response", "I'm not sure what's going on"
 
 SERVICE ISSUES:
 - Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
@@ -771,9 +771,11 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
 
     // Process sentiment analysis
     const sentimentResults = transcript.sentiment_analysis_results || []
+    const aiSentiment = sentimentResults.length > 0 ? sentimentResults : []
+    // No fallback, just use AI
     const overallSentiment =
-      sentimentResults.length > 0
-        ? sentimentResults.reduce(
+      aiSentiment.length > 0
+        ? aiSentiment.reduce(
             (acc: any, curr: any) => {
               acc[curr.sentiment] = (acc[curr.sentiment] || 0) + curr.confidence
               return acc
@@ -786,8 +788,8 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
 
     const sentiment = {
       overall: dominantSentiment[0],
-      confidence: dominantSentiment[1] / sentimentResults.length || 0.5,
-      segments: sentimentResults.slice(0, 10).map((result: any) => ({
+      confidence: dominantSentiment[1] / (aiSentiment.length || 1),
+      segments: aiSentiment.slice(0, 10).map((result: any) => ({
         text: result.text,
         sentiment: result.sentiment,
         confidence: result.confidence,

@@ -180,6 +180,18 @@ function detectSpeakerRoles(transcript: any) {
     const firstUtterance = utterances[0]
     const lastUtterance = utterances[utterances.length - 1]
     
+    // Check for agent-like language patterns
+    const agentKeywords = ["thank you for calling", "how can i help", "i understand", "let me help", "i apologize", "i can assist", "welcome to", "my name is", "i'm here to help", "customer service", "support team"]
+    const agentKeywordCount = agentKeywords.filter(keyword => 
+      utterances.some((u: any) => u.text.toLowerCase().includes(keyword))
+    ).length
+    
+    // Check for customer-like language patterns
+    const customerKeywords = ["i want to", "i need", "i have a problem", "i'm calling about", "i ordered", "i received", "my order", "my account", "i'm not happy", "this is wrong", "i want to cancel", "i want a refund"]
+    const customerKeywordCount = customerKeywords.filter(keyword => 
+      utterances.some((u: any) => u.text.toLowerCase().includes(keyword))
+    ).length
+    
     return {
       speaker,
       utteranceCount: utterances.length,
@@ -187,36 +199,38 @@ function detectSpeakerRoles(transcript: any) {
       avgWords,
       firstStart: firstUtterance?.start || 0,
       lastEnd: lastUtterance?.end || 0,
-      duration: (lastUtterance?.end || 0) - (firstUtterance?.start || 0)
+      duration: (lastUtterance?.end || 0) - (firstUtterance?.start || 0),
+      agentKeywordCount,
+      customerKeywordCount
     }
   })
 
   // Sort by various criteria to determine agent vs customer
   speakerStats.sort((a, b) => {
-    // Agent typically speaks more formally and has more structured responses
-    const aFormality = a.avgWords > 10 ? 1 : 0
-    const bFormality = b.avgWords > 10 ? 1 : 0
+    // Agent typically uses more formal language and has agent-specific keywords
+    const aAgentScore = a.agentKeywordCount * 3 + (a.avgWords > 8 ? 1 : 0)
+    const bAgentScore = b.agentKeywordCount * 3 + (b.avgWords > 8 ? 1 : 0)
     
-    // Agent often speaks first
+    // Customer typically uses more direct language and has customer-specific keywords
+    const aCustomerScore = a.customerKeywordCount * 3 + (a.avgWords < 15 ? 1 : 0)
+    const bCustomerScore = b.customerKeywordCount * 3 + (b.avgWords < 15 ? 1 : 0)
+    
+    // Agent often speaks first in customer service calls
     const aFirst = a.firstStart < b.firstStart ? 1 : 0
     const bFirst = b.firstStart < a.firstStart ? 1 : 0
     
-    // Agent typically has more utterances
-    const aMoreUtterances = a.utteranceCount > b.utteranceCount ? 1 : 0
-    const bMoreUtterances = b.utteranceCount > a.utteranceCount ? 1 : 0
-    
-    const aScore = aFormality + aFirst + aMoreUtterances
-    const bScore = bFormality + bFirst + bMoreUtterances
+    const aScore = aAgentScore + aFirst
+    const bScore = bAgentScore + bFirst
     
     return bScore - aScore
   })
 
   // Assign roles based on analysis
   if (speakerStats.length >= 2) {
-    speakerRoles[speakerStats[0].speaker] = "agent"
-    speakerRoles[speakerStats[1].speaker] = "customer"
+    speakerRoles[speakerStats[0].speaker as string] = "agent"
+    speakerRoles[speakerStats[1].speaker as string] = "customer"
   } else if (speakerStats.length === 1) {
-    speakerRoles[speakerStats[0].speaker] = "agent"
+    speakerRoles[speakerStats[0].speaker as string] = "agent"
   }
 
   return speakerRoles
@@ -257,7 +271,7 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `Analyze this customer service conversation and provide a detailed summary focusing on the customer's purpose and experience:
+  const prompt = `Analyze this customer service conversation and provide a focused summary:
 
 AGENT: ${agentText}
 
@@ -284,21 +298,16 @@ CUSTOMER ACTIONS:
 POLITE COMPLAINTS:
 - "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
 
-Provide a detailed summary that includes:
-1. Customer's main purpose for calling with specific details (e.g., "Customer called to cancel their hotel membership due to poor service quality, including room cleanliness issues and late check-ins")
-2. Specific issues or concerns raised by the customer
+Provide a concise summary focusing ONLY on:
+1. Why the customer called (their main purpose)
+2. What triggered their call (the specific issue or concern)
 3. How the agent handled the situation
-4. Customer satisfaction indicators (even if they're being polite while explaining problems)
-5. Key outcomes or resolutions
-6. Overall service quality assessment
 
-Focus on identifying:
-- Service issues (wrong orders, billing problems, poor service, delays, food quality issues, etc.)
-- Customer emotions (even when expressed politely)
-- Agent performance and resolution effectiveness
-- Business impact and customer experience
+Do NOT include call duration, number of exchanges, or technical details. Focus on the customer's story and the agent's response.
 
-Write the summary in a natural, detailed format without bullet points or formal structure.`
+Example format: "Customer called to cancel their membership due to poor service quality and billing issues. The agent attempted to resolve the billing problem but was unable to address the customer's concerns about service quality."
+
+Write in a natural, conversational tone.`
 
   const aiSummary = await callGemmaAPI(prompt)
   
@@ -343,7 +352,7 @@ async function generateEnhancedBusinessIntelligence(transcript: any) {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `Analyze this customer service conversation for comprehensive business intelligence insights:
+  const prompt = `Analyze this specific customer service conversation for unique business intelligence insights:
 
 AGENT: ${agentText}
 
@@ -377,14 +386,22 @@ DETECTION CATEGORIES:
 - Service Quality: Poor service, bad experiences
 - Customer Emotions: Subtle dissatisfaction, gentle complaints
 
-Provide business intelligence analysis in this exact JSON format:
+Analyze the agent's performance specifically:
+- Did they listen actively and acknowledge the customer's concerns?
+- Did they offer specific solutions or just generic responses?
+- Did they show empathy and understanding?
+- Did they take ownership of the problem?
+- Did they escalate appropriately when needed?
+- Did they follow up on promises made?
+
+Provide business intelligence analysis in this exact JSON format with insights specific to THIS conversation:
 {
-  "areasOfImprovement": ["specific areas where service can be improved based on customer feedback"],
-  "processGaps": ["identified gaps in processes or procedures that led to customer issues"],
-  "trainingOpportunities": ["specific training needs for agents based on this interaction"],
+  "areasOfImprovement": ["specific areas where service can be improved based on THIS customer's feedback"],
+  "processGaps": ["identified gaps in processes or procedures that led to THIS customer's issues"],
+  "trainingOpportunities": ["specific training needs for agents based on THIS interaction"],
   "preventiveMeasures": ["measures to prevent similar issues from occurring"],
-  "customerExperienceInsights": ["key insights about customer experience and satisfaction"],
-  "operationalRecommendations": ["operational improvements needed"],
+  "customerExperienceInsights": ["key insights about THIS customer's experience and satisfaction"],
+  "operationalRecommendations": ["operational improvements needed based on THIS call"],
   "riskFactors": ["potential risks identified including customer churn, negative reviews, escalation"],
   "qualityScore": {
     "overall": 85,
@@ -398,7 +415,14 @@ Provide business intelligence analysis in this exact JSON format:
   }
 }
 
-Base scores on actual conversation quality, customer satisfaction indicators, and business impact. Consider both explicit complaints and polite expressions of dissatisfaction.`
+Base the quality score specifically on how THIS agent handled THIS customer. Consider:
+- Responsiveness: How quickly and appropriately did the agent respond?
+- Empathy: Did the agent show understanding and care for the customer's situation?
+- Problem Solving: Did the agent offer effective solutions?
+- Communication: Was the agent clear, professional, and helpful?
+- Follow Up: Did the agent ensure the customer's needs were met?
+
+Make all insights specific to this conversation, not generic.`
 
   const aiAnalysis = await callGemmaAPI(prompt)
   
@@ -434,7 +458,7 @@ async function extractEnhancedActionItems(transcript: any): Promise<string[]> {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `Based on this customer service conversation, provide specific, actionable action items that directly address the issues discussed:
+  const prompt = `Based on this specific customer service conversation, provide unique action items that directly address the issues discussed:
 
 AGENT: ${agentText}
 
@@ -459,15 +483,15 @@ CUSTOMER ACTIONS:
 POLITE COMPLAINTS:
 - "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
 
-Provide 3-5 specific, actionable items that should be taken based on this conversation. Focus on:
-- Immediate follow-up actions needed
+Provide 3-5 specific, actionable items that should be taken based on THIS conversation. Focus on:
+- Immediate follow-up actions needed for THIS customer
 - Process improvements to prevent similar issues
-- Training needs for agents
-- Customer relationship management steps
+- Training needs for THIS agent based on their performance
+- Customer relationship management steps for THIS situation
 - Quality assurance and monitoring steps
 - Escalation or refund processes if mentioned
 
-Make each action item specific and directly related to what was discussed in the conversation.`
+Make each action item specific and directly related to what was discussed in THIS conversation. Do not provide generic action items.`
 
   const aiActionItems = await callGemmaAPI(prompt)
   
@@ -502,12 +526,16 @@ function generateFallbackSummary(transcript: any): string {
   const duration = sentimentResults.length > 0 ? 
     (sentimentResults[sentimentResults.length - 1].end - sentimentResults[0].start) / 1000 : 0
 
-  const overallSentiment = sentimentResults.length > 0
-    ? sentimentResults.reduce((acc: any, curr: any) => {
-        acc[curr.sentiment] = (acc[curr.sentiment] || 0) + curr.confidence
-        return acc
-      }, {})
-    : { NEUTRAL: 1 }
+  const overallSentiment =
+    sentimentResults.length > 0
+      ? sentimentResults.reduce(
+          (acc: any, curr: any) => {
+            acc[curr.sentiment] = (acc[curr.sentiment] || 0) + curr.confidence
+            return acc
+          },
+          {} as Record<string, number>,
+        )
+      : { NEUTRAL: 1 }
 
   const dominantSentiment = Object.entries(overallSentiment).sort(([, a]: any, [, b]: any) => b - a)[0][0]
 
@@ -755,7 +783,7 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
               acc[curr.sentiment] = (acc[curr.sentiment] || 0) + curr.confidence
               return acc
             },
-            {},
+            {} as Record<string, number>,
           )
         : { NEUTRAL: 1 }
 

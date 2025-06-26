@@ -59,73 +59,121 @@ async function callGemmaAPI(prompt) {
 
 // Upload audio file to AssemblyAI
 async function uploadAudio(audioBuffer) {
-  const response = await fetch(`${ASSEMBLYAI_BASE_URL}/upload`, {
-    method: "POST",
-    headers: {
-      Authorization: ASSEMBLYAI_API_KEY,
-      "Content-Type": "application/octet-stream",
-    },
-    body: audioBuffer,
-  })
+  console.log("Starting audio upload to AssemblyAI...")
+  console.log("Audio buffer size:", audioBuffer.length, "bytes")
+  
+  try {
+    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/upload`, {
+      method: "POST",
+      headers: {
+        Authorization: ASSEMBLYAI_API_KEY,
+        "Content-Type": "application/octet-stream",
+      },
+      body: audioBuffer,
+    })
 
-  if (!response.ok) {
-    throw new Error("Failed to upload audio")
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("AssemblyAI upload error:", response.status, errorText)
+      throw new Error(`Failed to upload audio: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    console.log("Audio uploaded successfully, URL:", data.upload_url)
+    return data.upload_url
+  } catch (error) {
+    console.error("Error uploading audio:", error.message)
+    throw new Error(`Audio upload failed: ${error.message}`)
   }
-
-  const data = await response.json()
-  return data.upload_url
 }
 
 // Submit transcription request
 async function submitTranscription(audioUrl) {
-  const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript`, {
-    method: "POST",
-    headers: {
-      Authorization: ASSEMBLYAI_API_KEY,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      audio_url: audioUrl,
-      speaker_labels: true,
-      sentiment_analysis: true,
-      auto_chapters: true,
-      punctuate: true,
-      format_text: true,
-    }),
-  })
+  console.log("Submitting transcription request...")
+  console.log("Audio URL:", audioUrl)
+  
+  try {
+    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript`, {
+      method: "POST",
+      headers: {
+        Authorization: ASSEMBLYAI_API_KEY,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        audio_url: audioUrl,
+        speaker_labels: true,
+        sentiment_analysis: true,
+        auto_chapters: true,
+        punctuate: true,
+        format_text: true,
+      }),
+    })
 
-  if (!response.ok) {
-    throw new Error("Failed to submit transcription")
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error("AssemblyAI transcription submission error:", response.status, errorText)
+      throw new Error(`Failed to submit transcription: ${response.status} - ${errorText}`)
+    }
+
+    const data = await response.json()
+    console.log("Transcription submitted successfully, ID:", data.id)
+    return data.id
+  } catch (error) {
+    console.error("Error submitting transcription:", error.message)
+    throw new Error(`Transcription submission failed: ${error.message}`)
   }
-
-  const data = await response.json()
-  return data.id
 }
 
 // Poll for transcription completion
 async function pollTranscription(transcriptId) {
-  while (true) {
-    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript/${transcriptId}`, {
-      headers: {
-        Authorization: ASSEMBLYAI_API_KEY,
-      },
-    })
+  let attempts = 0
+  const maxAttempts = 60 // 5 minutes max (60 * 5 seconds)
+  
+  while (attempts < maxAttempts) {
+    attempts++
+    console.log(`Polling attempt ${attempts}/${maxAttempts} for transcript ${transcriptId}`)
+    
+    try {
+      const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript/${transcriptId}`, {
+        headers: {
+          Authorization: ASSEMBLYAI_API_KEY,
+        },
+      })
 
-    if (!response.ok) {
-      throw new Error("Failed to get transcription status")
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error(`AssemblyAI API error (attempt ${attempts}):`, response.status, errorText)
+        throw new Error(`Failed to get transcription status: ${response.status} - ${errorText}`)
+      }
+
+      const transcript = await response.json()
+      console.log(`Transcription status (attempt ${attempts}):`, transcript.status)
+
+      if (transcript.status === "completed") {
+        console.log("Transcription completed successfully")
+        return transcript
+      } else if (transcript.status === "error") {
+        console.error("Transcription failed with error:", transcript.error)
+        throw new Error(`Transcription failed: ${transcript.error || 'Unknown error'}`)
+      } else if (transcript.status === "queued") {
+        console.log("Transcription still queued...")
+      } else if (transcript.status === "processing") {
+        console.log("Transcription still processing...")
+      }
+
+      // Wait 5 seconds before polling again
+      await new Promise((resolve) => setTimeout(resolve, 5000))
+    } catch (error) {
+      console.error(`Error during polling attempt ${attempts}:`, error.message)
+      if (attempts >= maxAttempts) {
+        throw new Error(`Transcription polling failed after ${maxAttempts} attempts: ${error.message}`)
+      }
+      // Wait 5 seconds before retrying
+      await new Promise((resolve) => setTimeout(resolve, 5000))
     }
-
-    const transcript = await response.json()
-
-    if (transcript.status === "completed") {
-      return transcript
-    } else if (transcript.status === "error") {
-      throw new Error("Transcription failed")
-    }
-
-    // Wait 3 seconds before polling again
-    await new Promise((resolve) => setTimeout(resolve, 3000))
   }
+  
+  throw new Error(`Transcription timed out after ${maxAttempts} attempts`)
 }
 
 // Improved speaker role detection with better heuristics
@@ -820,6 +868,34 @@ exports.handler = async (event, context) => {
       assemblyai: !!ASSEMBLYAI_API_KEY,
       openrouter: !!OPENROUTER_API_KEY
     })
+
+    // Validate API keys
+    if (!ASSEMBLYAI_API_KEY) {
+      throw new Error("AssemblyAI API key is missing")
+    }
+    
+    if (!OPENROUTER_API_KEY) {
+      console.warn("OpenRouter API key is missing - will use fallback analysis")
+    }
+
+    // Test AssemblyAI API key with a simple request
+    try {
+      const testResponse = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript`, {
+        method: "GET",
+        headers: {
+          Authorization: ASSEMBLYAI_API_KEY,
+        },
+      })
+      
+      if (testResponse.status === 401) {
+        throw new Error("AssemblyAI API key is invalid or expired")
+      }
+      
+      console.log("AssemblyAI API key validation successful")
+    } catch (apiError) {
+      console.error("AssemblyAI API key validation failed:", apiError.message)
+      throw new Error(`AssemblyAI API key issue: ${apiError.message}`)
+    }
 
     // Parse multipart form data
     const boundary = event.headers['content-type']?.split('boundary=')[1]

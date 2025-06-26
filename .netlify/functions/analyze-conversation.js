@@ -8,6 +8,10 @@ async function callGemmaAPI(prompt) {
   try {
     console.log("Calling Gemma API with prompt:", prompt.substring(0, 100) + "...")
     
+    // Add timeout to the fetch request
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
+    
     const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
@@ -28,11 +32,13 @@ async function callGemmaAPI(prompt) {
             content: prompt
           }
         ],
-        max_tokens: 1000,
+        max_tokens: 500, // Reduced from 1000
         temperature: 0.3
-      })
+      }),
+      signal: controller.signal
     })
 
+    clearTimeout(timeoutId)
     console.log("Gemma API response status:", response.status)
 
     if (!response.ok) {
@@ -53,6 +59,9 @@ async function callGemmaAPI(prompt) {
     return content
   } catch (error) {
     console.error("Gemma API error:", error)
+    if (error.name === 'AbortError') {
+      return "AI analysis unavailable - request timed out"
+    }
     return `AI analysis unavailable - ${error.message}`
   }
 }
@@ -127,7 +136,7 @@ async function submitTranscription(audioUrl) {
 // Poll for transcription completion
 async function pollTranscription(transcriptId) {
   let attempts = 0
-  const maxAttempts = 60 // 5 minutes max (60 * 5 seconds)
+  const maxAttempts = 30 // Reduced to 2.5 minutes max (30 * 5 seconds)
   
   while (attempts < maxAttempts) {
     attempts++
@@ -161,15 +170,15 @@ async function pollTranscription(transcriptId) {
         console.log("Transcription still processing...")
       }
 
-      // Wait 5 seconds before polling again
-      await new Promise((resolve) => setTimeout(resolve, 5000))
+      // Wait 3 seconds before polling again (reduced from 5)
+      await new Promise((resolve) => setTimeout(resolve, 3000))
     } catch (error) {
       console.error(`Error during polling attempt ${attempts}:`, error.message)
       if (attempts >= maxAttempts) {
         throw new Error(`Transcription polling failed after ${maxAttempts} attempts: ${error.message}`)
       }
-      // Wait 5 seconds before retrying
-      await new Promise((resolve) => setTimeout(resolve, 5000))
+      // Wait 3 seconds before retrying
+      await new Promise((resolve) => setTimeout(resolve, 3000))
     }
   }
   
@@ -838,6 +847,9 @@ function extractFallbackActionItems(transcript) {
 }
 
 exports.handler = async (event, context) => {
+  // Set function timeout to 25 seconds (leaving 5 seconds buffer)
+  context.callbackWaitsForEmptyEventLoop = false
+  
   // Handle CORS
   if (event.httpMethod === 'OPTIONS') {
     return {
@@ -862,6 +874,34 @@ exports.handler = async (event, context) => {
     }
   }
 
+  // Add timeout wrapper
+  const timeoutPromise = new Promise((_, reject) => {
+    setTimeout(() => reject(new Error('Function timeout - processing took too long')), 25000)
+  })
+
+  const processPromise = processAudio(event)
+  
+  try {
+    const result = await Promise.race([processPromise, timeoutPromise])
+    return result
+  } catch (error) {
+    console.error("Function error:", error.message)
+    return {
+      statusCode: 500,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ 
+        error: "Failed to process audio file",
+        details: error.message,
+        timeout: error.message.includes('timeout')
+      }),
+    }
+  }
+}
+
+async function processAudio(event) {
   try {
     console.log("Starting audio processing...")
     console.log("API Keys available:", {
@@ -950,6 +990,18 @@ exports.handler = async (event, context) => {
 
     console.log("Audio file received, size:", audioBuffer.length, "bytes")
 
+    // Check file size (Netlify has 6MB limit)
+    if (audioBuffer.length > 6 * 1024 * 1024) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Access-Control-Allow-Origin': '*',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ error: 'Audio file too large. Maximum size is 6MB.' }),
+      }
+    }
+
     // Upload audio to AssemblyAI
     console.log("Uploading audio to AssemblyAI...")
     const audioUrl = await uploadAudio(audioBuffer)
@@ -965,27 +1017,34 @@ exports.handler = async (event, context) => {
     const transcript = await pollTranscription(transcriptId)
     console.log("Transcription completed")
 
-    // Generate enhanced analysis using Gemma 3N 4B
+    // Generate enhanced analysis using Gemma 3N 4B (with timeout)
     console.log("Generating AI analysis...")
-    let enhancedSummary = await generateEnhancedSummary(transcript)
-    let enhancedBusinessIntelligence = await generateEnhancedBusinessIntelligence(transcript)
-    let enhancedActionItems = await extractEnhancedActionItems(transcript)
+    const [enhancedSummary, enhancedBusinessIntelligence, enhancedActionItems] = await Promise.allSettled([
+      generateEnhancedSummary(transcript),
+      generateEnhancedBusinessIntelligence(transcript),
+      extractEnhancedActionItems(transcript)
+    ])
 
-    // Use fallbacks if AI analysis fails
-    if (enhancedSummary.includes("AI analysis unavailable")) {
+    // Use results or fallbacks
+    let summary = enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : generateFallbackSummary(transcript)
+    let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateFallbackBusinessIntelligence(transcript)
+    let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractFallbackActionItems(transcript)
+
+    // Use fallbacks if AI analysis failed
+    if (summary.includes("AI analysis unavailable")) {
       console.log("Using fallback summary generation")
-      enhancedSummary = generateFallbackSummary(transcript)
+      summary = generateFallbackSummary(transcript)
     }
 
-    if (enhancedBusinessIntelligence.areasOfImprovement.length === 0 && 
-        enhancedBusinessIntelligence.trainingOpportunities.length === 0) {
+    if (businessIntelligence.areasOfImprovement.length === 0 && 
+        businessIntelligence.trainingOpportunities.length === 0) {
       console.log("Using fallback business intelligence")
-      enhancedBusinessIntelligence = generateFallbackBusinessIntelligence(transcript)
+      businessIntelligence = generateFallbackBusinessIntelligence(transcript)
     }
 
-    if (enhancedActionItems.length === 0 || enhancedActionItems[0].includes("AI analysis unavailable")) {
+    if (actionItems.length === 0 || actionItems[0].includes("AI analysis unavailable")) {
       console.log("Using fallback action items")
-      enhancedActionItems = extractFallbackActionItems(transcript)
+      actionItems = extractFallbackActionItems(transcript)
     }
 
     // Process sentiment analysis
@@ -1014,7 +1073,7 @@ exports.handler = async (event, context) => {
     }
 
     // Create enhanced vCon object
-    const vcon = createEnhancedVcon(transcript, audioUrl, fileName, enhancedBusinessIntelligence, enhancedSummary, enhancedActionItems)
+    const vcon = createEnhancedVcon(transcript, audioUrl, fileName, businessIntelligence, summary, actionItems)
 
     // Format transcription with improved speaker identification
     const formattedTranscription = formatTranscriptionWithSpeakers(transcript)
@@ -1029,10 +1088,10 @@ exports.handler = async (event, context) => {
       },
       body: JSON.stringify({
         transcription: formattedTranscription,
-        summary: enhancedSummary,
-        actionItems: enhancedActionItems,
+        summary: summary,
+        actionItems: actionItems,
         sentiment,
-        businessIntelligence: enhancedBusinessIntelligence,
+        businessIntelligence: businessIntelligence,
         vcon,
       }),
     }

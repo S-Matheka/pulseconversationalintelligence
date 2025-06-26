@@ -158,7 +158,7 @@ async function pollTranscription(transcriptId: string) {
   throw new Error(`Transcription timed out after ${maxAttempts} attempts`)
 }
 
-// Simple speaker role detection
+// Improved speaker role detection with better heuristics
 function detectSpeakerRoles(transcript: any) {
   const speakerRoles: Record<string, "agent" | "customer"> = {}
 
@@ -168,9 +168,55 @@ function detectSpeakerRoles(transcript: any) {
 
   const speakers = [...new Set(transcript.utterances.map((u: any) => u.speaker))]
   
-  if (speakers.length >= 2) {
-    speakerRoles[speakers[0]] = "agent"
-    speakerRoles[speakers[1]] = "customer"
+  if (speakers.length === 0) {
+    return speakerRoles
+  }
+
+  // Enhanced heuristic: analyze conversation patterns
+  const speakerStats = speakers.map(speaker => {
+    const utterances = transcript.utterances.filter((u: any) => u.speaker === speaker)
+    const totalWords = utterances.reduce((sum: number, u: any) => sum + u.text.split(' ').length, 0)
+    const avgWords = totalWords / utterances.length
+    const firstUtterance = utterances[0]
+    const lastUtterance = utterances[utterances.length - 1]
+    
+    return {
+      speaker,
+      utteranceCount: utterances.length,
+      totalWords,
+      avgWords,
+      firstStart: firstUtterance?.start || 0,
+      lastEnd: lastUtterance?.end || 0,
+      duration: (lastUtterance?.end || 0) - (firstUtterance?.start || 0)
+    }
+  })
+
+  // Sort by various criteria to determine agent vs customer
+  speakerStats.sort((a, b) => {
+    // Agent typically speaks more formally and has more structured responses
+    const aFormality = a.avgWords > 10 ? 1 : 0
+    const bFormality = b.avgWords > 10 ? 1 : 0
+    
+    // Agent often speaks first
+    const aFirst = a.firstStart < b.firstStart ? 1 : 0
+    const bFirst = b.firstStart < a.firstStart ? 1 : 0
+    
+    // Agent typically has more utterances
+    const aMoreUtterances = a.utteranceCount > b.utteranceCount ? 1 : 0
+    const bMoreUtterances = b.utteranceCount > a.utteranceCount ? 1 : 0
+    
+    const aScore = aFormality + aFirst + aMoreUtterances
+    const bScore = bFormality + bFirst + bMoreUtterances
+    
+    return bScore - aScore
+  })
+
+  // Assign roles based on analysis
+  if (speakerStats.length >= 2) {
+    speakerRoles[speakerStats[0].speaker] = "agent"
+    speakerRoles[speakerStats[1].speaker] = "customer"
+  } else if (speakerStats.length === 1) {
+    speakerRoles[speakerStats[0].speaker] = "agent"
   }
 
   return speakerRoles
@@ -195,7 +241,7 @@ function formatTranscriptionWithSpeakers(transcript: any): string {
     .join("\n\n")
 }
 
-// Generate enhanced summary using AI
+// Generate enhanced summary using Gemma AI
 async function generateEnhancedSummary(transcript: any): Promise<string> {
   const utterances = transcript.utterances || []
   const sentimentResults = transcript.sentiment_analysis_results || []
@@ -204,147 +250,170 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
     return "No conversation content available for analysis."
   }
 
-  const agentUtterances = utterances.filter((u: any) => detectSpeakerRoles(transcript)[u.speaker] === "agent")
-  const customerUtterances = utterances.filter((u: any) => detectSpeakerRoles(transcript)[u.speaker] === "customer")
+  const speakerRoles = detectSpeakerRoles(transcript)
+  const agentUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "agent")
+  const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
 
-  const analysis = analyzeActualConversation(agentUtterances, customerUtterances, sentimentResults)
-  return generateAccurateSummary(analysis)
-}
-
-// Analyze actual conversation flow
-function analyzeActualConversation(agentUtterances: any[], customerUtterances: any[], sentimentResults: any[]) {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const details = extractSpecificDetails(customerText, agentText)
-  const sentimentProgression = analyzeSentimentProgression(sentimentResults)
+  const prompt = `Analyze this customer service conversation and provide a comprehensive summary:
 
-  return {
-    agentText,
-    customerText,
-    details,
-    sentimentProgression,
-    totalUtterances: agentUtterances.length + customerUtterances.length,
-    conversationDuration: sentimentResults.length > 0 ? 
-      (sentimentResults[sentimentResults.length - 1].end - sentimentResults[0].start) / 1000 : 0
+AGENT: ${agentText}
+
+CUSTOMER: ${customerText}
+
+SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment} (${Math.round(s.confidence * 100)}%)`).join(', ')}
+
+Please provide a detailed summary including:
+1. Main issue or topic discussed
+2. How the agent handled the situation
+3. Customer satisfaction indicators
+4. Key outcomes or resolutions
+5. Overall conversation quality assessment
+
+Focus on business insights and actionable observations.`
+
+  const aiSummary = await callGemmaAPI(prompt)
+  
+  if (aiSummary.includes("AI analysis unavailable")) {
+    return generateFallbackSummary(transcript)
   }
+  
+  return aiSummary
 }
 
-// Extract specific conversation details
-function extractSpecificDetails(customerText: string, agentText: string) {
-  const details = {
-    customerIssues: [] as string[],
-    agentSolutions: [] as string[],
-    keyTopics: [] as string[],
-    resolutionStatus: "unknown"
-  }
+// Generate enhanced business intelligence using Gemma AI
+async function generateEnhancedBusinessIntelligence(transcript: any) {
+  const utterances = transcript.utterances || []
+  const sentimentResults = transcript.sentiment_analysis_results || []
 
-  // Extract customer issues
-  const issueKeywords = ["problem", "issue", "trouble", "difficulty", "concern", "complaint", "error", "broken", "not working"]
-  issueKeywords.forEach(keyword => {
-    if (customerText.toLowerCase().includes(keyword)) {
-      details.customerIssues.push(`Customer mentioned ${keyword}`)
+  if (utterances.length === 0) {
+    return {
+      areasOfImprovement: ["No conversation data available"],
+      processGaps: [],
+      trainingOpportunities: [],
+      preventiveMeasures: [],
+      customerExperienceInsights: [],
+      operationalRecommendations: [],
+      riskFactors: [],
+      qualityScore: {
+        overall: 50,
+        categories: {
+          responsiveness: 50,
+          empathy: 50,
+          problemSolving: 50,
+          communication: 50,
+          followUp: 50,
+        }
+      }
     }
-  })
+  }
 
-  // Extract agent solutions
-  const solutionKeywords = ["solution", "fix", "resolve", "help", "assist", "support", "guide", "explain"]
-  solutionKeywords.forEach(keyword => {
-    if (agentText.toLowerCase().includes(keyword)) {
-      details.agentSolutions.push(`Agent provided ${keyword}`)
+  const speakerRoles = detectSpeakerRoles(transcript)
+  const agentUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "agent")
+  const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
+
+  const agentText = agentUtterances.map((u: any) => u.text).join(" ")
+  const customerText = customerUtterances.map((u: any) => u.text).join(" ")
+
+  const prompt = `Analyze this customer service conversation for business intelligence insights:
+
+AGENT: ${agentText}
+
+CUSTOMER: ${customerText}
+
+SENTIMENT: ${sentimentResults.map((s: any) => `${s.sentiment}`).join(', ')}
+
+Provide business intelligence analysis in this exact JSON format:
+{
+  "areasOfImprovement": ["specific areas where service can be improved"],
+  "processGaps": ["identified gaps in processes or procedures"],
+  "trainingOpportunities": ["specific training needs for agents"],
+  "preventiveMeasures": ["measures to prevent similar issues"],
+  "customerExperienceInsights": ["key insights about customer experience"],
+  "operationalRecommendations": ["operational improvements"],
+  "riskFactors": ["potential risks identified"],
+  "qualityScore": {
+    "overall": 85,
+    "categories": {
+      "responsiveness": 80,
+      "empathy": 90,
+      "problemSolving": 85,
+      "communication": 88,
+      "followUp": 82
     }
-  })
-
-  // Determine resolution status
-  const resolutionKeywords = ["resolved", "fixed", "solved", "completed", "done", "finished"]
-  const hasResolution = resolutionKeywords.some(keyword => 
-    agentText.toLowerCase().includes(keyword) || customerText.toLowerCase().includes(keyword)
-  )
-  details.resolutionStatus = hasResolution ? "resolved" : "ongoing"
-
-  return details
-}
-
-// Analyze sentiment progression
-function analyzeSentimentProgression(sentimentResults: any[]) {
-  if (sentimentResults.length === 0) return { trend: "neutral", improvement: false }
-
-  const getAverageSentiment = (segments: any[]) => {
-    const sentimentScores = { POSITIVE: 0, NEGATIVE: 0, NEUTRAL: 0 }
-    segments.forEach(segment => {
-      sentimentScores[segment.sentiment as keyof typeof sentimentScores] += segment.confidence
-    })
-    return sentimentScores
-  }
-
-  const firstHalf = sentimentResults.slice(0, Math.floor(sentimentResults.length / 2))
-  const secondHalf = sentimentResults.slice(Math.floor(sentimentResults.length / 2))
-
-  const firstHalfSentiment = getAverageSentiment(firstHalf)
-  const secondHalfSentiment = getAverageSentiment(secondHalf)
-
-  const firstHalfDominant = Object.entries(firstHalfSentiment).sort(([, a], [, b]) => b - a)[0][0]
-  const secondHalfDominant = Object.entries(secondHalfSentiment).sort(([, a], [, b]) => b - a)[0][0]
-
-  return {
-    trend: secondHalfDominant,
-    improvement: secondHalfDominant === "POSITIVE" && firstHalfDominant !== "POSITIVE"
   }
 }
 
-// Generate accurate summary
-function generateAccurateSummary(analysis: any): string {
-  const { agentText, customerText, details, sentimentProgression, totalUtterances, conversationDuration } = analysis
+Base scores on actual conversation quality, sentiment analysis, and business best practices.`
 
-  let summary = `Conversation Analysis Summary:\n\n`
-
-  // Basic conversation info
-  summary += `📊 **Conversation Overview:**\n`
-  summary += `• Duration: ${Math.round(conversationDuration)} seconds\n`
-  summary += `• Total exchanges: ${totalUtterances}\n`
-  summary += `• Resolution status: ${details.resolutionStatus}\n\n`
-
-  // Customer perspective
-  if (details.customerIssues.length > 0) {
-    summary += `👤 **Customer Issues:**\n`
-    details.customerIssues.forEach((issue: string) => {
-      summary += `• ${issue}\n`
-    })
-    summary += `\n`
+  const aiAnalysis = await callGemmaAPI(prompt)
+  
+  if (aiAnalysis.includes("AI analysis unavailable")) {
+    return generateFallbackBusinessIntelligence(transcript)
   }
-
-  // Agent response
-  if (details.agentSolutions.length > 0) {
-    summary += `🎧 **Agent Solutions:**\n`
-    details.agentSolutions.forEach((solution: string) => {
-      summary += `• ${solution}\n`
-    })
-    summary += `\n`
+  
+  try {
+    // Try to parse JSON response
+    const jsonMatch = aiAnalysis.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0])
+    }
+  } catch (error) {
+    console.error("Failed to parse AI business intelligence JSON:", error)
   }
-
-  // Sentiment analysis
-  summary += `😊 **Sentiment Analysis:**\n`
-  summary += `• Overall trend: ${sentimentProgression.trend}\n`
-  summary += `• Improvement: ${sentimentProgression.improvement ? "Yes" : "No"}\n\n`
-
-  // Key insights
-  summary += `💡 **Key Insights:**\n`
-  if (customerText.length > agentText.length) {
-    summary += `• Customer-led conversation with detailed explanation\n`
-  } else {
-    summary += `• Agent-led conversation with comprehensive guidance\n`
-  }
-
-  if (details.resolutionStatus === "resolved") {
-    summary += `• Issue successfully resolved\n`
-  } else {
-    summary += `• Issue requires follow-up\n`
-  }
-
-  return summary
+  
+  return generateFallbackBusinessIntelligence(transcript)
 }
 
-// Generate fallback summary
+// Extract enhanced action items using Gemma AI
+async function extractEnhancedActionItems(transcript: any): Promise<string[]> {
+  const utterances = transcript.utterances || []
+
+  if (utterances.length === 0) {
+    return ["Review conversation recording for insights"]
+  }
+
+  const speakerRoles = detectSpeakerRoles(transcript)
+  const agentUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "agent")
+  const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
+
+  const agentText = agentUtterances.map((u: any) => u.text).join(" ")
+  const customerText = customerUtterances.map((u: any) => u.text).join(" ")
+
+  const prompt = `Based on this customer service conversation, provide specific, actionable action items:
+
+AGENT: ${agentText}
+
+CUSTOMER: ${customerText}
+
+Provide 3-5 specific, actionable items that should be taken based on this conversation. Focus on:
+- Immediate follow-up actions
+- Process improvements
+- Training needs
+- Customer relationship management
+- Quality assurance steps
+
+Format as a simple list of action items.`
+
+  const aiActionItems = await callGemmaAPI(prompt)
+  
+  if (aiActionItems.includes("AI analysis unavailable")) {
+    return extractFallbackActionItems(transcript)
+  }
+  
+  // Parse action items from AI response
+  const lines = aiActionItems.split('\n').filter((line: string) => line.trim().length > 0)
+  const actionItems = lines
+    .map((line: string) => line.replace(/^\d+\.\s*/, '').replace(/^[-*]\s*/, '').trim())
+    .filter((item: string) => item.length > 10 && !item.includes("AI analysis"))
+    .slice(0, 5)
+  
+  return actionItems.length > 0 ? actionItems : extractFallbackActionItems(transcript)
+}
+
+// Fallback functions
 function generateFallbackSummary(transcript: any): string {
   const utterances = transcript.utterances || []
   const sentimentResults = transcript.sentiment_analysis_results || []
@@ -374,8 +443,7 @@ function generateFallbackSummary(transcript: any): string {
 • Resolution status: ${dominantSentiment === "POSITIVE" ? "Likely resolved" : "May need follow-up"}`
 }
 
-// Generate business intelligence
-function generateBusinessIntelligence(transcript: any) {
+function generateFallbackBusinessIntelligence(transcript: any) {
   const utterances = transcript.utterances || []
   const sentimentResults = transcript.sentiment_analysis_results || []
 
@@ -401,44 +469,13 @@ function generateBusinessIntelligence(transcript: any) {
     }
   }
 
-  const analysis = analyzeActualPerformanceIssues(
-    utterances.filter((u: any) => detectSpeakerRoles(transcript)[u.speaker] === "agent").map((u: any) => u.text).join(" "),
-    utterances.filter((u: any) => detectSpeakerRoles(transcript)[u.speaker] === "customer").map((u: any) => u.text).join(" "),
-    transcript.text || "",
-    sentimentResults
-  )
-
-  return {
-    areasOfImprovement: analysis.areasOfImprovement,
-    processGaps: analysis.processGaps,
-    trainingOpportunities: analysis.trainingOpportunities,
-    preventiveMeasures: analysis.preventiveMeasures,
-    customerExperienceInsights: analysis.customerExperienceInsights,
-    operationalRecommendations: analysis.operationalRecommendations,
-    riskFactors: analysis.riskFactors,
-    qualityScore: analysis.qualityScore
-  }
-}
-
-// Analyze performance issues
-function analyzeActualPerformanceIssues(agentText: string, customerText: string, fullText: string, sentimentResults: any[]) {
-  const areasOfImprovement = []
-  const processGaps = []
-  const trainingOpportunities = []
-  const preventiveMeasures = []
-  const customerExperienceInsights = []
-  const operationalRecommendations = []
-  const riskFactors = []
-
-  // Analyze sentiment for quality score
   const positiveSegments = sentimentResults.filter((s: any) => s.sentiment === "POSITIVE").length
-  const negativeSegments = sentimentResults.filter((s: any) => s.sentiment === "NEGATIVE").length
   const totalSegments = sentimentResults.length
 
   const qualityScore = {
     overall: totalSegments > 0 ? Math.round((positiveSegments / totalSegments) * 100) : 70,
     categories: {
-      responsiveness: Math.round(Math.random() * 30) + 70, // 70-100
+      responsiveness: Math.round(Math.random() * 30) + 70,
       empathy: Math.round(Math.random() * 30) + 70,
       problemSolving: Math.round(Math.random() * 30) + 70,
       communication: Math.round(Math.random() * 30) + 70,
@@ -446,36 +483,19 @@ function analyzeActualPerformanceIssues(agentText: string, customerText: string,
     }
   }
 
-  // Extract insights based on conversation content
-  if (customerText.toLowerCase().includes("wait") || customerText.toLowerCase().includes("long")) {
-    areasOfImprovement.push("Response time optimization needed")
-    operationalRecommendations.push("Implement faster response protocols")
-  }
-
-  if (agentText.toLowerCase().includes("sorry") || agentText.toLowerCase().includes("apologize")) {
-    customerExperienceInsights.push("Agent demonstrated accountability")
-    trainingOpportunities.push("Conflict resolution training")
-  }
-
-  if (fullText.toLowerCase().includes("escalate") || fullText.toLowerCase().includes("supervisor")) {
-    processGaps.push("Escalation process may need review")
-    riskFactors.push("Potential for customer dissatisfaction")
-  }
-
   return {
-    areasOfImprovement: areasOfImprovement.length > 0 ? areasOfImprovement : ["General service quality improvement"],
-    processGaps: processGaps.length > 0 ? processGaps : ["Standard operating procedures"],
-    trainingOpportunities: trainingOpportunities.length > 0 ? trainingOpportunities : ["Customer service excellence"],
-    preventiveMeasures: preventiveMeasures.length > 0 ? preventiveMeasures : ["Proactive issue resolution"],
-    customerExperienceInsights: customerExperienceInsights.length > 0 ? customerExperienceInsights : ["Positive interaction patterns"],
-    operationalRecommendations: operationalRecommendations.length > 0 ? operationalRecommendations : ["Continuous improvement processes"],
-    riskFactors: riskFactors.length > 0 ? riskFactors : ["Standard operational risks"],
+    areasOfImprovement: ["General service quality improvement"],
+    processGaps: ["Standard operating procedures"],
+    trainingOpportunities: ["Customer service excellence"],
+    preventiveMeasures: ["Proactive issue resolution"],
+    customerExperienceInsights: ["Positive interaction patterns"],
+    operationalRecommendations: ["Continuous improvement processes"],
+    riskFactors: ["Standard operational risks"],
     qualityScore
   }
 }
 
-// Extract action items
-function extractActionItems(transcript: any): string[] {
+function extractFallbackActionItems(transcript: any): string[] {
   const utterances = transcript.utterances || []
 
   if (utterances.length === 0) {
@@ -559,18 +579,18 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
     const transcript = await pollTranscription(transcriptId)
     console.log("Transcription completed")
 
-    // Generate enhanced analysis using Gemma 3N 4B (with timeout)
+    // Generate enhanced analysis using Gemma 3N 4B
     console.log("Generating AI analysis...")
     const [enhancedSummary, enhancedBusinessIntelligence, enhancedActionItems] = await Promise.allSettled([
       generateEnhancedSummary(transcript),
-      generateBusinessIntelligence(transcript),
-      extractActionItems(transcript)
+      generateEnhancedBusinessIntelligence(transcript),
+      extractEnhancedActionItems(transcript)
     ])
 
     // Use results or fallbacks
     let summary = enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : generateFallbackSummary(transcript)
-    let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateBusinessIntelligence(transcript)
-    let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractActionItems(transcript)
+    let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateFallbackBusinessIntelligence(transcript)
+    let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractFallbackActionItems(transcript)
 
     // Use fallbacks if AI analysis failed
     if (summary.includes("AI analysis unavailable")) {
@@ -581,12 +601,12 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
     if (businessIntelligence.areasOfImprovement.length === 0 && 
         businessIntelligence.trainingOpportunities.length === 0) {
       console.log("Using fallback business intelligence")
-      businessIntelligence = generateBusinessIntelligence(transcript)
+      businessIntelligence = generateFallbackBusinessIntelligence(transcript)
     }
 
     if (actionItems.length === 0 || actionItems[0].includes("AI analysis unavailable")) {
       console.log("Using fallback action items")
-      actionItems = extractActionItems(transcript)
+      actionItems = extractFallbackActionItems(transcript)
     }
 
     // Process sentiment analysis

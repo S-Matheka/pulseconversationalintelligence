@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 
-const ASSEMBLYAI_API_KEY = "4ee04704fdba4972a2c98ee62760a4c8"
+const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY || "4ee04704fdba4972a2c98ee62760a4c8"
 const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
-const OPENROUTER_API_KEY = "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"
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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"
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 interface TranscriptResponse {

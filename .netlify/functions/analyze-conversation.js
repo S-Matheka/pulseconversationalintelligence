@@ -1,6 +1,6 @@
-const ASSEMBLYAI_API_KEY = "4ee04704fdba4972a2c98ee62760a4c8"
+const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY || "4ee04704fdba4972a2c98ee62760a4c8"
 const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
-const OPENROUTER_API_KEY = "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"
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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"
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 // Call Google Gemma 3N 4B for enhanced analysis
@@ -815,9 +815,16 @@ exports.handler = async (event, context) => {
   }
 
   try {
+    console.log("Starting audio processing...")
+    console.log("API Keys available:", {
+      assemblyai: !!ASSEMBLYAI_API_KEY,
+      openrouter: !!OPENROUTER_API_KEY
+    })
+
     // Parse multipart form data
     const boundary = event.headers['content-type']?.split('boundary=')[1]
     if (!boundary) {
+      console.error("No boundary found in content-type")
       return {
         statusCode: 400,
         headers: {
@@ -854,6 +861,7 @@ exports.handler = async (event, context) => {
     }
 
     if (!audioBuffer) {
+      console.error("No audio file found in request")
       return {
         statusCode: 400,
         headers: {
@@ -864,16 +872,25 @@ exports.handler = async (event, context) => {
       }
     }
 
+    console.log("Audio file received, size:", audioBuffer.length, "bytes")
+
     // Upload audio to AssemblyAI
+    console.log("Uploading audio to AssemblyAI...")
     const audioUrl = await uploadAudio(audioBuffer)
+    console.log("Audio uploaded successfully:", audioUrl)
 
     // Submit transcription request
+    console.log("Submitting transcription request...")
     const transcriptId = await submitTranscription(audioUrl)
+    console.log("Transcription submitted, ID:", transcriptId)
 
     // Poll for completion
+    console.log("Polling for transcription completion...")
     const transcript = await pollTranscription(transcriptId)
+    console.log("Transcription completed")
 
     // Generate enhanced analysis using Gemma 3N 4B
+    console.log("Generating AI analysis...")
     let enhancedSummary = await generateEnhancedSummary(transcript)
     let enhancedBusinessIntelligence = await generateEnhancedBusinessIntelligence(transcript)
     let enhancedActionItems = await extractEnhancedActionItems(transcript)
@@ -926,6 +943,8 @@ exports.handler = async (event, context) => {
     // Format transcription with improved speaker identification
     const formattedTranscription = formatTranscriptionWithSpeakers(transcript)
 
+    console.log("Analysis completed successfully")
+
     return {
       statusCode: 200,
       headers: {
@@ -943,13 +962,18 @@ exports.handler = async (event, context) => {
     }
   } catch (error) {
     console.error("Error processing audio:", error)
+    console.error("Error stack:", error.stack)
     return {
       statusCode: 500,
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ error: "Failed to process audio file" }),
+      body: JSON.stringify({ 
+        error: "Failed to process audio file",
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      }),
     }
   }
 } 

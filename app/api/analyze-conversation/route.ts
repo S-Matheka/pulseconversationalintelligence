@@ -534,90 +534,37 @@ function generateFallbackSummary(transcript: any): string {
   const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
 
-  const totalUtterances = utterances.length
-  const duration = sentimentResults.length > 0 ? 
-    (sentimentResults[sentimentResults.length - 1].end - sentimentResults[0].start) / 1000 : 0
-
-  const overallSentiment =
-    sentimentResults.length > 0
-      ? sentimentResults.reduce(
-          (acc: any, curr: any) => {
-            acc[curr.sentiment] = (acc[curr.sentiment] || 0) + curr.confidence
-            return acc
-          },
-          {} as Record<string, number>,
-        )
-      : { NEUTRAL: 1 }
-
-  const dominantSentiment = Object.entries(overallSentiment).sort(([, a]: any, [, b]: any) => b - a)[0][0]
-
   // Enhanced keyword detection for customer purpose
-  let purpose = "Customer called for general assistance"
-  let serviceIssues = []
-  
-  // Check for food service issues
-  if (customerText.includes("cold food") || customerText.includes("cold pizza")) {
-    serviceIssues.push("cold food delivery")
-  }
-  if (customerText.includes("wrong food") || customerText.includes("wrong order") || customerText.includes("ordered") && customerText.includes("got")) {
-    serviceIssues.push("incorrect food order")
-  }
-  if (customerText.includes("damaged") || customerText.includes("spoiled") || customerText.includes("broken")) {
-    serviceIssues.push("damaged or spoiled items")
-  }
-  
-  // Check for general service issues
-  if (customerText.includes("poor service") || customerText.includes("bad experience") || customerText.includes("terrible service")) {
-    serviceIssues.push("poor service quality")
-  }
-  if (customerText.includes("billing") || customerText.includes("overcharged") || customerText.includes("wrong charges")) {
-    serviceIssues.push("billing issues")
-  }
+  let purpose = "get assistance"
+  let reason = "general inquiry"
   
   // Check for customer actions
   if (customerText.includes("cancel") || customerText.includes("terminate")) {
-    purpose = "Customer called to cancel their service or membership"
+    purpose = "cancel their service"
   } else if (customerText.includes("complain") || customerText.includes("complaint")) {
-    purpose = "Customer called to file a complaint"
+    purpose = "file a complaint"
   } else if (customerText.includes("refund") || customerText.includes("money back")) {
-    purpose = "Customer called to request a refund"
+    purpose = "request a refund"
   } else if (customerText.includes("escalate") || customerText.includes("supervisor")) {
-    purpose = "Customer called to escalate their issue"
+    purpose = "speak to a supervisor"
   } else if (customerText.includes("clarification") || customerText.includes("explain") || customerText.includes("understand")) {
-    purpose = "Customer called seeking clarification or explanation"
+    purpose = "get clarification"
   }
   
-  // Check for emotions
-  const emotions = []
-  if (customerText.includes("frustrated") || customerText.includes("annoyed") || customerText.includes("irritated")) {
-    emotions.push("frustration")
-  }
-  if (customerText.includes("angry") || customerText.includes("upset") || customerText.includes("fed up")) {
-    emotions.push("anger")
-  }
-  if (customerText.includes("disappointed") || customerText.includes("unhappy") || customerText.includes("dissatisfied")) {
-    emotions.push("disappointment")
-  }
-  if (customerText.includes("stressed") || customerText.includes("worried") || customerText.includes("concerned")) {
-    emotions.push("stress")
+  // Check for service issues
+  if (customerText.includes("cold food") || customerText.includes("cold pizza")) {
+    reason = "cold food delivery"
+  } else if (customerText.includes("wrong food") || customerText.includes("wrong order") || customerText.includes("ordered") && customerText.includes("got")) {
+    reason = "receiving wrong items"
+  } else if (customerText.includes("damaged") || customerText.includes("spoiled") || customerText.includes("broken")) {
+    reason = "damaged or spoiled items"
+  } else if (customerText.includes("poor service") || customerText.includes("bad experience") || customerText.includes("terrible service")) {
+    reason = "poor service quality"
+  } else if (customerText.includes("billing") || customerText.includes("overcharged") || customerText.includes("wrong charges")) {
+    reason = "billing issues"
   }
 
-  // Build detailed purpose
-  if (serviceIssues.length > 0) {
-    purpose += ` due to ${serviceIssues.join(", ")}`
-  }
-  if (emotions.length > 0) {
-    purpose += ` and expressed ${emotions.join(", ")}`
-  }
-
-  // Add sentiment context
-  const sentimentContext = dominantSentiment === "POSITIVE" ? 
-    "The customer appeared satisfied with the interaction" : 
-    dominantSentiment === "NEGATIVE" ? 
-    "The customer expressed dissatisfaction during the call" : 
-    "The customer maintained a neutral tone throughout the conversation"
-
-  return `${purpose}. The conversation lasted ${Math.round(duration)} seconds with ${totalUtterances} exchanges between the customer and agent. ${sentimentContext}. The interaction required follow-up attention to ensure complete resolution of the customer's concerns.`
+  return `The customer wanted to ${purpose} due to ${reason}.`
 }
 
 function generateFallbackBusinessIntelligence(transcript: any) {

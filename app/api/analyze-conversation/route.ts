@@ -288,6 +288,9 @@ EMOTION DETECTION:
 - Stress: stressed, worried, concerned, confused, exhausted
 - Neglect/Lack of Communication: "no one is telling us anything", "no one is helping", "not being updated", "not informed", "left in the dark", "no communication", "no updates", "I wish someone would update me", "I feel left out", "I'm still waiting", "I'm not sure what's happening", "I haven't heard back", "I'm not being kept in the loop", "I'm waiting for a response", "I'm not sure what's going on"
 
+COMPLAINT DETECTION:
+- Any complaint, mismatch, or dissatisfaction (e.g., "I ordered this, I got that", "not what I expected", "not satisfied", "this isn't working as advertised", "this doesn't meet my needs", "this is wrong", "I want to complain", "I want to escalate", "I want a refund", "I want to cancel") should be flagged as negative sentiment and a churn risk, even if stated politely or indirectly. Analyze the meaning and context, not just keywords.
+
 SERVICE ISSUES:
 - Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
 - General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders, lack of communication, no updates
@@ -299,7 +302,7 @@ CUSTOMER ACTIONS:
 POLITE COMPLAINTS:
 - "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
 
-Treat any expressions of neglect, lack of updates, or not being informed as negative sentiment, even if the language is polite or indirect.
+Treat any complaint or expression of dissatisfaction as negative sentiment and a business risk, regardless of politeness or wording. Always analyze the meaning/context, not just keywords.
 
 Provide a concise summary in this exact format:
 "The customer wanted to [main purpose] due to [specific reason/trigger]."
@@ -314,7 +317,8 @@ Examples:
 - "The customer wanted to cancel their service due to poor service quality."
 - "The customer wanted a refund due to receiving wrong items."
 - "The customer wanted to speak to a supervisor due to billing errors."
-- "The customer wanted an update due to lack of communication and feeling neglected."`
+- "The customer wanted an update due to lack of communication and feeling neglected."
+- "The customer wanted a resolution due to receiving the wrong product, which was not what they expected."`
 
   const aiSummary = await callGemmaAPI(prompt)
   
@@ -370,11 +374,14 @@ SENTIMENT: ${sentimentResults.map((s: any) => `${s.sentiment}`).join(', ')}
 Look for these specific keywords and issues:
 
 EMOTION DETECTION:
-- Frustration: frustrated, annoyed, irritated, exasperated, neglected, ignored, not being helped, no one is telling us anything, no updates, not informed, left in the dark
+- Frustration: frustrated, annoyed, irritated, exasperated, neglected, ignored, not being helped, no one is telling us anything, no updates, not informed, left in the dark, I wish someone would update me, I feel left out, I'm still waiting, I'm not sure what's happening, I haven't heard back, I'm not being kept in the loop, I'm waiting for a response, I'm not sure what's going on
 - Anger: angry, upset, fed up, tired of, sick of, had enough
 - Disappointment: disappointed, unhappy, dissatisfied
 - Stress: stressed, worried, concerned, confused, exhausted
-- Neglect/Lack of Communication: "no one is telling us anything", "no one is helping", "not being updated", "not informed", "left in the dark", "no communication", "no updates"
+- Neglect/Lack of Communication: "no one is telling us anything", "no one is helping", "not being updated", "not informed", "left in the dark", "no communication", "no updates", "I wish someone would update me", "I feel left out", "I'm still waiting", "I'm not sure what's happening", "I haven't heard back", "I'm not being kept in the loop", "I'm waiting for a response", "I'm not sure what's going on"
+
+COMPLAINT DETECTION:
+- Any complaint, mismatch, or dissatisfaction (e.g., "I ordered this, I got that", "not what I expected", "not satisfied", "this isn't working as advertised", "this doesn't meet my needs", "this is wrong", "I want to complain", "I want to escalate", "I want a refund", "I want to cancel") should be flagged as negative sentiment and a churn risk, even if stated politely or indirectly. Analyze the meaning and context, not just keywords.
 
 SERVICE ISSUES:
 - Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
@@ -393,6 +400,7 @@ DETECTION CATEGORIES:
 - Billing Accuracy: Overcharging, incorrect charges
 - Service Quality: Poor service, bad experiences, lack of communication, no updates
 - Customer Emotions: Subtle dissatisfaction, gentle complaints, feeling neglected, not being informed
+- Complaints: Any complaint, mismatch, or dissatisfaction should be flagged as negative sentiment and a churn risk, regardless of politeness or wording. Always analyze the meaning/context, not just keywords.
 
 Analyze the agent's performance specifically:
 - Did they listen actively and acknowledge the customer's concerns?
@@ -403,7 +411,7 @@ Analyze the agent's performance specifically:
 - Did they follow up on promises made?
 - Did they keep the customer informed and provide timely updates?
 
-If the customer expressed neglect, lack of updates, or not being informed, flag this as a major risk and area for improvement.
+If the customer expressed neglect, lack of updates, not being informed, or any complaint, flag this as a major risk and area for improvement.
 
 Provide business intelligence analysis in this exact JSON format with insights specific to THIS conversation:
 {
@@ -413,7 +421,7 @@ Provide business intelligence analysis in this exact JSON format with insights s
   "preventiveMeasures": ["measures to prevent similar issues from occurring"],
   "customerExperienceInsights": ["key insights about THIS customer's experience and satisfaction"],
   "operationalRecommendations": ["operational improvements needed based on THIS call"],
-  "riskFactors": ["potential risks identified including customer churn, negative reviews, escalation, communication breakdown, lack of updates, customer neglect"],
+  "riskFactors": ["potential risks identified including customer churn, negative reviews, escalation, communication breakdown, lack of updates, customer neglect, complaints, dissatisfaction"],
   "qualityScore": {
     "overall": 85,
     "categories": {

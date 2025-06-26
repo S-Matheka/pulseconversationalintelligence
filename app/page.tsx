@@ -250,7 +250,7 @@ export default function ConversationAnalyzer() {
             )}
 
             <div className="mt-6">
-              <Button onClick={processAudio} disabled={!file || isProcessing} className="w-full" size="lg">
+              <Button onClick={processAudio} disabled={!file || isProcessing} className="w-full" size="lg" variant="default">
                 {isProcessing ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -60,7 +60,11 @@ const config: Config = {
   				'accent-foreground': 'hsl(var(--sidebar-accent-foreground))',
   				border: 'hsl(var(--sidebar-border))',
   				ring: 'hsl(var(--sidebar-ring))'
-  			}
+  			},
+  			creo: {
+  				blue: '#22304A',
+  				gold: '#F5B041',
+  			},
   		},
   		borderRadius: {
   			lg: 'var(--radius)',

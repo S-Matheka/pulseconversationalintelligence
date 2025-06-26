@@ -747,7 +747,15 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       summary = generateFallbackSummary(transcript)
     }
 
-    if (businessIntelligence.areasOfImprovement.includes("No conversation data available")) {
+    // Always recalculate overall as the average of the five categories for consistency
+    if (businessIntelligence.qualityScore && businessIntelligence.qualityScore.categories) {
+      const cats = businessIntelligence.qualityScore.categories
+      const avg = Math.round((cats.responsiveness + cats.empathy + cats.problemSolving + cats.communication + cats.followUp) / 5)
+      businessIntelligence.qualityScore.overall = avg
+    }
+
+    // Only fallback if AI fails completely
+    if (!businessIntelligence.qualityScore || !businessIntelligence.qualityScore.categories) {
       console.log("AI business intelligence failed, using fallback")
       businessIntelligence = generateFallbackBusinessIntelligence(transcript)
     }

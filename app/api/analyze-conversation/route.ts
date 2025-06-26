@@ -265,8 +265,27 @@ CUSTOMER: ${customerText}
 
 SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment} (${Math.round(s.confidence * 100)}%)`).join(', ')}
 
+Look for these specific keywords and issues:
+
+EMOTION DETECTION:
+- Frustration: frustrated, annoyed, irritated, exasperated
+- Anger: angry, upset, fed up, tired of, sick of, had enough
+- Disappointment: disappointed, unhappy, dissatisfied
+- Stress: stressed, worried, concerned, confused, exhausted
+
+SERVICE ISSUES:
+- Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
+- General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders
+- Billing Issues: overcharging, wrong charges, billing errors, overcharged, undercharged
+
+CUSTOMER ACTIONS:
+- cancel, return, refund, complaint, escalate, speak to supervisor, file complaint, leave review, switch providers, never use again, warn others
+
+POLITE COMPLAINTS:
+- "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
+
 Provide a detailed summary that includes:
-1. Customer's main purpose for calling (e.g., "Customer called to cancel membership due to poor service", "Customer called to complain about wrong order", "Customer called seeking clarification about billing")
+1. Customer's main purpose for calling with specific details (e.g., "Customer called to cancel their hotel membership due to poor service quality, including room cleanliness issues and late check-ins")
 2. Specific issues or concerns raised by the customer
 3. How the agent handled the situation
 4. Customer satisfaction indicators (even if they're being polite while explaining problems)
@@ -274,7 +293,7 @@ Provide a detailed summary that includes:
 6. Overall service quality assessment
 
 Focus on identifying:
-- Service issues (wrong orders, billing problems, poor service, delays, etc.)
+- Service issues (wrong orders, billing problems, poor service, delays, food quality issues, etc.)
 - Customer emotions (even when expressed politely)
 - Agent performance and resolution effectiveness
 - Business impact and customer experience
@@ -333,10 +352,30 @@ CUSTOMER: ${customerText}
 SENTIMENT: ${sentimentResults.map((s: any) => `${s.sentiment}`).join(', ')}
 
 Look for these specific keywords and issues:
-- Customer emotions: upset, angry, annoyed, frustrated, disappointed, unhappy, dissatisfied, irritated, mad, furious, livid, fed up, tired of, sick of, had enough
-- Service issues: wrong order, incorrect item, billing error, overcharged, undercharged, missing item, damaged, broken, defective, poor quality, late delivery, delayed, never received, lost package
-- Customer actions: cancel, return, refund, complaint, escalate, speak to supervisor, file complaint, leave review, switch providers, never use again, warn others
-- Polite complaints: "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
+
+EMOTION DETECTION:
+- Frustration: frustrated, annoyed, irritated, exasperated
+- Anger: angry, upset, fed up, tired of, sick of, had enough
+- Disappointment: disappointed, unhappy, dissatisfied
+- Stress: stressed, worried, concerned, confused, exhausted
+
+SERVICE ISSUES:
+- Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
+- General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders
+- Billing Issues: overcharging, wrong charges, billing errors, overcharged, undercharged
+
+CUSTOMER ACTIONS:
+- cancel, return, refund, complaint, escalate, speak to supervisor, file complaint, leave review, switch providers, never use again, warn others
+
+POLITE COMPLAINTS:
+- "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
+
+DETECTION CATEGORIES:
+- Order Accuracy: Wrong items, fulfillment failures
+- Food Quality: Cold food, damaged items, quality control
+- Billing Accuracy: Overcharging, incorrect charges
+- Service Quality: Poor service, bad experiences
+- Customer Emotions: Subtle dissatisfaction, gentle complaints
 
 Provide business intelligence analysis in this exact JSON format:
 {
@@ -402,10 +441,23 @@ AGENT: ${agentText}
 CUSTOMER: ${customerText}
 
 Look for these specific issues and keywords:
-- Customer emotions: upset, angry, annoyed, frustrated, disappointed, unhappy, dissatisfied, irritated, mad, furious, livid, fed up, tired of, sick of, had enough
-- Service issues: wrong order, incorrect item, billing error, overcharged, undercharged, missing item, damaged, broken, defective, poor quality, late delivery, delayed, never received, lost package
-- Customer actions: cancel, return, refund, complaint, escalate, speak to supervisor, file complaint, leave review, switch providers, never use again, warn others
-- Polite complaints: "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
+
+EMOTION DETECTION:
+- Frustration: frustrated, annoyed, irritated, exasperated
+- Anger: angry, upset, fed up, tired of, sick of, had enough
+- Disappointment: disappointed, unhappy, dissatisfied
+- Stress: stressed, worried, concerned, confused, exhausted
+
+SERVICE ISSUES:
+- Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
+- General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders
+- Billing Issues: overcharging, wrong charges, billing errors, overcharged, undercharged
+
+CUSTOMER ACTIONS:
+- cancel, return, refund, complaint, escalate, speak to supervisor, file complaint, leave review, switch providers, never use again, warn others
+
+POLITE COMPLAINTS:
+- "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
 
 Provide 3-5 specific, actionable items that should be taken based on this conversation. Focus on:
 - Immediate follow-up actions needed
@@ -459,23 +511,63 @@ function generateFallbackSummary(transcript: any): string {
 
   const dominantSentiment = Object.entries(overallSentiment).sort(([, a]: any, [, b]: any) => b - a)[0][0]
 
-  // Determine customer purpose based on keywords
+  // Enhanced keyword detection for customer purpose
   let purpose = "Customer called for general assistance"
+  let serviceIssues = []
   
+  // Check for food service issues
+  if (customerText.includes("cold food") || customerText.includes("cold pizza")) {
+    serviceIssues.push("cold food delivery")
+  }
+  if (customerText.includes("wrong food") || customerText.includes("wrong order") || customerText.includes("ordered") && customerText.includes("got")) {
+    serviceIssues.push("incorrect food order")
+  }
+  if (customerText.includes("damaged") || customerText.includes("spoiled") || customerText.includes("broken")) {
+    serviceIssues.push("damaged or spoiled items")
+  }
+  
+  // Check for general service issues
+  if (customerText.includes("poor service") || customerText.includes("bad experience") || customerText.includes("terrible service")) {
+    serviceIssues.push("poor service quality")
+  }
+  if (customerText.includes("billing") || customerText.includes("overcharged") || customerText.includes("wrong charges")) {
+    serviceIssues.push("billing issues")
+  }
+  
+  // Check for customer actions
   if (customerText.includes("cancel") || customerText.includes("terminate")) {
     purpose = "Customer called to cancel their service or membership"
   } else if (customerText.includes("complain") || customerText.includes("complaint")) {
     purpose = "Customer called to file a complaint"
   } else if (customerText.includes("refund") || customerText.includes("money back")) {
     purpose = "Customer called to request a refund"
-  } else if (customerText.includes("wrong") || customerText.includes("incorrect") || customerText.includes("ordered") && customerText.includes("got")) {
-    purpose = "Customer called about receiving wrong or incorrect items"
-  } else if (customerText.includes("billing") || customerText.includes("charge") || customerText.includes("bill")) {
-    purpose = "Customer called about billing or payment issues"
+  } else if (customerText.includes("escalate") || customerText.includes("supervisor")) {
+    purpose = "Customer called to escalate their issue"
   } else if (customerText.includes("clarification") || customerText.includes("explain") || customerText.includes("understand")) {
     purpose = "Customer called seeking clarification or explanation"
-  } else if (customerText.includes("frustrated") || customerText.includes("upset") || customerText.includes("angry") || customerText.includes("annoyed")) {
-    purpose = "Customer called to express frustration or dissatisfaction"
+  }
+  
+  // Check for emotions
+  const emotions = []
+  if (customerText.includes("frustrated") || customerText.includes("annoyed") || customerText.includes("irritated")) {
+    emotions.push("frustration")
+  }
+  if (customerText.includes("angry") || customerText.includes("upset") || customerText.includes("fed up")) {
+    emotions.push("anger")
+  }
+  if (customerText.includes("disappointed") || customerText.includes("unhappy") || customerText.includes("dissatisfied")) {
+    emotions.push("disappointment")
+  }
+  if (customerText.includes("stressed") || customerText.includes("worried") || customerText.includes("concerned")) {
+    emotions.push("stress")
+  }
+
+  // Build detailed purpose
+  if (serviceIssues.length > 0) {
+    purpose += ` due to ${serviceIssues.join(", ")}`
+  }
+  if (emotions.length > 0) {
+    purpose += ` and expressed ${emotions.join(", ")}`
   }
 
   // Add sentiment context

@@ -257,7 +257,7 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `Analyze this customer service conversation and provide a comprehensive summary:
+  const prompt = `Analyze this customer service conversation and provide a detailed summary focusing on the customer's purpose and experience:
 
 AGENT: ${agentText}
 
@@ -265,14 +265,21 @@ CUSTOMER: ${customerText}
 
 SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment} (${Math.round(s.confidence * 100)}%)`).join(', ')}
 
-Please provide a detailed summary including:
-1. Main issue or topic discussed
-2. How the agent handled the situation
-3. Customer satisfaction indicators
-4. Key outcomes or resolutions
-5. Overall conversation quality assessment
+Provide a detailed summary that includes:
+1. Customer's main purpose for calling (e.g., "Customer called to cancel membership due to poor service", "Customer called to complain about wrong order", "Customer called seeking clarification about billing")
+2. Specific issues or concerns raised by the customer
+3. How the agent handled the situation
+4. Customer satisfaction indicators (even if they're being polite while explaining problems)
+5. Key outcomes or resolutions
+6. Overall service quality assessment
 
-Focus on business insights and actionable observations.`
+Focus on identifying:
+- Service issues (wrong orders, billing problems, poor service, delays, etc.)
+- Customer emotions (even when expressed politely)
+- Agent performance and resolution effectiveness
+- Business impact and customer experience
+
+Write the summary in a natural, detailed format without bullet points or formal structure.`
 
   const aiSummary = await callGemmaAPI(prompt)
   
@@ -317,7 +324,7 @@ async function generateEnhancedBusinessIntelligence(transcript: any) {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `Analyze this customer service conversation for business intelligence insights:
+  const prompt = `Analyze this customer service conversation for comprehensive business intelligence insights:
 
 AGENT: ${agentText}
 
@@ -325,15 +332,21 @@ CUSTOMER: ${customerText}
 
 SENTIMENT: ${sentimentResults.map((s: any) => `${s.sentiment}`).join(', ')}
 
+Look for these specific keywords and issues:
+- Customer emotions: upset, angry, annoyed, frustrated, disappointed, unhappy, dissatisfied, irritated, mad, furious, livid, fed up, tired of, sick of, had enough
+- Service issues: wrong order, incorrect item, billing error, overcharged, undercharged, missing item, damaged, broken, defective, poor quality, late delivery, delayed, never received, lost package
+- Customer actions: cancel, return, refund, complaint, escalate, speak to supervisor, file complaint, leave review, switch providers, never use again, warn others
+- Polite complaints: "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
+
 Provide business intelligence analysis in this exact JSON format:
 {
-  "areasOfImprovement": ["specific areas where service can be improved"],
-  "processGaps": ["identified gaps in processes or procedures"],
-  "trainingOpportunities": ["specific training needs for agents"],
-  "preventiveMeasures": ["measures to prevent similar issues"],
-  "customerExperienceInsights": ["key insights about customer experience"],
-  "operationalRecommendations": ["operational improvements"],
-  "riskFactors": ["potential risks identified"],
+  "areasOfImprovement": ["specific areas where service can be improved based on customer feedback"],
+  "processGaps": ["identified gaps in processes or procedures that led to customer issues"],
+  "trainingOpportunities": ["specific training needs for agents based on this interaction"],
+  "preventiveMeasures": ["measures to prevent similar issues from occurring"],
+  "customerExperienceInsights": ["key insights about customer experience and satisfaction"],
+  "operationalRecommendations": ["operational improvements needed"],
+  "riskFactors": ["potential risks identified including customer churn, negative reviews, escalation"],
   "qualityScore": {
     "overall": 85,
     "categories": {
@@ -346,7 +359,7 @@ Provide business intelligence analysis in this exact JSON format:
   }
 }
 
-Base scores on actual conversation quality, sentiment analysis, and business best practices.`
+Base scores on actual conversation quality, customer satisfaction indicators, and business impact. Consider both explicit complaints and polite expressions of dissatisfaction.`
 
   const aiAnalysis = await callGemmaAPI(prompt)
   
@@ -382,20 +395,27 @@ async function extractEnhancedActionItems(transcript: any): Promise<string[]> {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `Based on this customer service conversation, provide specific, actionable action items:
+  const prompt = `Based on this customer service conversation, provide specific, actionable action items that directly address the issues discussed:
 
 AGENT: ${agentText}
 
 CUSTOMER: ${customerText}
 
-Provide 3-5 specific, actionable items that should be taken based on this conversation. Focus on:
-- Immediate follow-up actions
-- Process improvements
-- Training needs
-- Customer relationship management
-- Quality assurance steps
+Look for these specific issues and keywords:
+- Customer emotions: upset, angry, annoyed, frustrated, disappointed, unhappy, dissatisfied, irritated, mad, furious, livid, fed up, tired of, sick of, had enough
+- Service issues: wrong order, incorrect item, billing error, overcharged, undercharged, missing item, damaged, broken, defective, poor quality, late delivery, delayed, never received, lost package
+- Customer actions: cancel, return, refund, complaint, escalate, speak to supervisor, file complaint, leave review, switch providers, never use again, warn others
+- Polite complaints: "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
 
-Format as a simple list of action items.`
+Provide 3-5 specific, actionable items that should be taken based on this conversation. Focus on:
+- Immediate follow-up actions needed
+- Process improvements to prevent similar issues
+- Training needs for agents
+- Customer relationship management steps
+- Quality assurance and monitoring steps
+- Escalation or refund processes if mentioned
+
+Make each action item specific and directly related to what was discussed in the conversation.`
 
   const aiActionItems = await callGemmaAPI(prompt)
   
@@ -422,6 +442,10 @@ function generateFallbackSummary(transcript: any): string {
     return "No conversation content available for analysis."
   }
 
+  const speakerRoles = detectSpeakerRoles(transcript)
+  const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
+  const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
+
   const totalUtterances = utterances.length
   const duration = sentimentResults.length > 0 ? 
     (sentimentResults[sentimentResults.length - 1].end - sentimentResults[0].start) / 1000 : 0
@@ -435,12 +459,33 @@ function generateFallbackSummary(transcript: any): string {
 
   const dominantSentiment = Object.entries(overallSentiment).sort(([, a]: any, [, b]: any) => b - a)[0][0]
 
-  return `Conversation Summary:
-• Duration: ${Math.round(duration)} seconds
-• Total exchanges: ${totalUtterances}
-• Overall sentiment: ${dominantSentiment}
-• Key topics discussed: Customer service interaction
-• Resolution status: ${dominantSentiment === "POSITIVE" ? "Likely resolved" : "May need follow-up"}`
+  // Determine customer purpose based on keywords
+  let purpose = "Customer called for general assistance"
+  
+  if (customerText.includes("cancel") || customerText.includes("terminate")) {
+    purpose = "Customer called to cancel their service or membership"
+  } else if (customerText.includes("complain") || customerText.includes("complaint")) {
+    purpose = "Customer called to file a complaint"
+  } else if (customerText.includes("refund") || customerText.includes("money back")) {
+    purpose = "Customer called to request a refund"
+  } else if (customerText.includes("wrong") || customerText.includes("incorrect") || customerText.includes("ordered") && customerText.includes("got")) {
+    purpose = "Customer called about receiving wrong or incorrect items"
+  } else if (customerText.includes("billing") || customerText.includes("charge") || customerText.includes("bill")) {
+    purpose = "Customer called about billing or payment issues"
+  } else if (customerText.includes("clarification") || customerText.includes("explain") || customerText.includes("understand")) {
+    purpose = "Customer called seeking clarification or explanation"
+  } else if (customerText.includes("frustrated") || customerText.includes("upset") || customerText.includes("angry") || customerText.includes("annoyed")) {
+    purpose = "Customer called to express frustration or dissatisfaction"
+  }
+
+  // Add sentiment context
+  const sentimentContext = dominantSentiment === "POSITIVE" ? 
+    "The customer appeared satisfied with the interaction" : 
+    dominantSentiment === "NEGATIVE" ? 
+    "The customer expressed dissatisfaction during the call" : 
+    "The customer maintained a neutral tone throughout the conversation"
+
+  return `${purpose}. The conversation lasted ${Math.round(duration)} seconds with ${totalUtterances} exchanges between the customer and agent. ${sentimentContext}. The interaction required follow-up attention to ensure complete resolution of the customer's concerns.`
 }
 
 function generateFallbackBusinessIntelligence(transcript: any) {

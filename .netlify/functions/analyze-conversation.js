@@ -846,61 +846,6 @@ function extractFallbackActionItems(transcript) {
   return actionItems
 }
 
-exports.handler = async (event, context) => {
-  // Set function timeout to 25 seconds (leaving 5 seconds buffer)
-  context.callbackWaitsForEmptyEventLoop = false
-  
-  // Handle CORS
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Headers': 'Content-Type',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-      },
-      body: '',
-    }
-  }
-
-  if (event.httpMethod !== 'POST') {
-    return {
-      statusCode: 405,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ error: 'Method not allowed' }),
-    }
-  }
-
-  // Add timeout wrapper
-  const timeoutPromise = new Promise((_, reject) => {
-    setTimeout(() => reject(new Error('Function timeout - processing took too long')), 25000)
-  })
-
-  const processPromise = processAudio(event)
-  
-  try {
-    const result = await Promise.race([processPromise, timeoutPromise])
-    return result
-  } catch (error) {
-    console.error("Function error:", error.message)
-    return {
-      statusCode: 500,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ 
-        error: "Failed to process audio file",
-        details: error.message,
-        timeout: error.message.includes('timeout')
-      }),
-    }
-  }
-}
-
 async function processAudio(event) {
   try {
     console.log("Starting audio processing...")
@@ -1111,4 +1056,26 @@ async function processAudio(event) {
       }),
     }
   }
+}
+
+// Export the handler with timeout configuration
+exports.handler = async (event, context) => {
+  // Set function timeout to 5 minutes (300 seconds)
+  context.callbackWaitsForEmptyEventLoop = false
+  
+  // Handle CORS preflight requests
+  if (event.httpMethod === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      },
+      body: '',
+    }
+  }
+
+  // Process the audio file
+  return await processAudio(event)
 } 

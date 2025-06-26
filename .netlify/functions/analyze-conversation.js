@@ -10,7 +10,7 @@ async function callGemmaAPI(prompt) {
     
     // Add timeout to the fetch request
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 15000) // 15 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 10000) // Reduced to 10 second timeout
     
     const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
       method: "POST",
@@ -136,7 +136,7 @@ async function submitTranscription(audioUrl) {
 // Poll for transcription completion
 async function pollTranscription(transcriptId) {
   let attempts = 0
-  const maxAttempts = 30 // Reduced to 2.5 minutes max (30 * 5 seconds)
+  const maxAttempts = 20 // Reduced to 1.5 minutes max (20 * 4.5 seconds)
   
   while (attempts < maxAttempts) {
     attempts++
@@ -170,15 +170,15 @@ async function pollTranscription(transcriptId) {
         console.log("Transcription still processing...")
       }
 
-      // Wait 3 seconds before polling again (reduced from 5)
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      // Wait 4.5 seconds before polling again (reduced from 5)
+      await new Promise((resolve) => setTimeout(resolve, 4500))
     } catch (error) {
       console.error(`Error during polling attempt ${attempts}:`, error.message)
       if (attempts >= maxAttempts) {
         throw new Error(`Transcription polling failed after ${maxAttempts} attempts: ${error.message}`)
       }
-      // Wait 3 seconds before retrying
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      // Wait 4.5 seconds before retrying
+      await new Promise((resolve) => setTimeout(resolve, 4500))
     }
   }
   

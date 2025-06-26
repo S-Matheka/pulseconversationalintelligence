@@ -71,117 +71,88 @@ async function callGemmaAPI(prompt: string) {
 // Upload audio file to AssemblyAI
 async function uploadAudio(audioBuffer: ArrayBuffer): Promise<string> {
   console.log("Starting audio upload to AssemblyAI...")
-  console.log("Audio buffer size:", audioBuffer.byteLength, "bytes")
   
-  try {
-    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/upload`, {
-      method: "POST",
-      headers: {
-        Authorization: ASSEMBLYAI_API_KEY,
-        "Content-Type": "application/octet-stream",
-      },
-      body: audioBuffer,
-    })
+  const response = await fetch(`${ASSEMBLYAI_BASE_URL}/upload`, {
+    method: "POST",
+    headers: {
+      Authorization: ASSEMBLYAI_API_KEY,
+      "Content-Type": "application/octet-stream",
+    },
+    body: audioBuffer,
+  })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error("AssemblyAI upload error:", response.status, errorText)
-      throw new Error(`Failed to upload audio: ${response.status} - ${errorText}`)
-    }
-
-    const data = await response.json()
-    console.log("Audio uploaded successfully, URL:", data.upload_url)
-    return data.upload_url
-  } catch (error: any) {
-    console.error("Error uploading audio:", error.message)
-    throw new Error(`Audio upload failed: ${error.message}`)
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Failed to upload audio: ${response.status} - ${errorText}`)
   }
+
+  const data = await response.json()
+  console.log("Audio uploaded successfully, URL:", data.upload_url)
+  return data.upload_url
 }
 
 // Submit transcription request
 async function submitTranscription(audioUrl: string): Promise<string> {
   console.log("Submitting transcription request...")
-  console.log("Audio URL:", audioUrl)
   
-  try {
-    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript`, {
-      method: "POST",
-      headers: {
-        Authorization: ASSEMBLYAI_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        audio_url: audioUrl,
-        speaker_labels: true,
-        sentiment_analysis: true,
-        auto_chapters: true,
-        punctuate: true,
-        format_text: true,
-      }),
-    })
+  const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript`, {
+    method: "POST",
+    headers: {
+      Authorization: ASSEMBLYAI_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      audio_url: audioUrl,
+      speaker_labels: true,
+      sentiment_analysis: true,
+      auto_chapters: true,
+      punctuate: true,
+      format_text: true,
+    }),
+  })
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      console.error("AssemblyAI transcription submission error:", response.status, errorText)
-      throw new Error(`Failed to submit transcription: ${response.status} - ${errorText}`)
-    }
-
-    const data = await response.json()
-    console.log("Transcription submitted successfully, ID:", data.id)
-    return data.id
-  } catch (error: any) {
-    console.error("Error submitting transcription:", error.message)
-    throw new Error(`Transcription submission failed: ${error.message}`)
+  if (!response.ok) {
+    const errorText = await response.text()
+    throw new Error(`Failed to submit transcription: ${response.status} - ${errorText}`)
   }
+
+  const data = await response.json()
+  console.log("Transcription submitted successfully, ID:", data.id)
+  return data.id
 }
 
 // Poll for transcription completion
 async function pollTranscription(transcriptId: string) {
   let attempts = 0
-  const maxAttempts = 20 // 1.5 minutes max (20 * 4.5 seconds)
+  const maxAttempts = 20 // 1.5 minutes max
   
   while (attempts < maxAttempts) {
     attempts++
     console.log(`Polling attempt ${attempts}/${maxAttempts} for transcript ${transcriptId}`)
     
-    try {
-      const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript/${transcriptId}`, {
-        headers: {
-          Authorization: ASSEMBLYAI_API_KEY,
-        },
-      })
+    const response = await fetch(`${ASSEMBLYAI_BASE_URL}/transcript/${transcriptId}`, {
+      headers: {
+        Authorization: ASSEMBLYAI_API_KEY,
+      },
+    })
 
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error(`AssemblyAI API error (attempt ${attempts}):`, response.status, errorText)
-        throw new Error(`Failed to get transcription status: ${response.status} - ${errorText}`)
-      }
-
-      const transcript = await response.json()
-      console.log(`Transcription status (attempt ${attempts}):`, transcript.status)
-
-      if (transcript.status === "completed") {
-        console.log("Transcription completed successfully")
-        return transcript
-      } else if (transcript.status === "error") {
-        console.error("Transcription failed with error:", transcript.error)
-        throw new Error(`Transcription failed: ${transcript.error || 'Unknown error'}`)
-      } else if (transcript.status === "queued") {
-        console.log("Transcription still queued...")
-      } else if (transcript.status === "processing") {
-        console.log("Transcription still processing...")
-      }
-
-      // Wait 4.5 seconds before polling again
-      await new Promise((resolve) => setTimeout(resolve, 4500))
-    } catch (error: any) {
-      console.error(`Error during polling attempt ${attempts}:`, error.message)
-      if (attempts >= maxAttempts) {
-        throw new Error(`Transcription polling failed after ${maxAttempts} attempts: ${error.message}`)
-      }
-      // Wait 4.5 seconds before retrying
-      await new Promise((resolve) => setTimeout(resolve, 4500))
+    if (!response.ok) {
+      const errorText = await response.text()
+      throw new Error(`Failed to get transcription status: ${response.status} - ${errorText}`)
     }
+
+    const transcript = await response.json()
+    console.log(`Transcription status (attempt ${attempts}):`, transcript.status)
+
+    if (transcript.status === "completed") {
+      console.log("Transcription completed successfully")
+      return transcript
+    } else if (transcript.status === "error") {
+      throw new Error(`Transcription failed: ${transcript.error || 'Unknown error'}`)
+    }
+
+    // Wait 4.5 seconds before polling again
+    await new Promise((resolve) => setTimeout(resolve, 4500))
   }
   
   throw new Error(`Transcription timed out after ${maxAttempts} attempts`)
@@ -197,11 +168,6 @@ function detectSpeakerRoles(transcript: any) {
 
   const speakers = [...new Set(transcript.utterances.map((u: any) => u.speaker))]
   
-  if (speakers.length === 0) {
-    return speakerRoles
-  }
-
-  // Simple heuristic: first speaker is often the agent
   if (speakers.length >= 2) {
     speakerRoles[speakers[0]] = "agent"
     speakerRoles[speakers[1]] = "customer"
@@ -511,36 +477,12 @@ function analyzeActualPerformanceIssues(agentText: string, customerText: string,
 // Extract action items
 function extractActionItems(transcript: any): string[] {
   const utterances = transcript.utterances || []
-  const actionItems = []
 
   if (utterances.length === 0) {
     return ["Review conversation recording for insights"]
   }
 
-  const fullText = utterances.map((u: any) => u.text).join(" ").toLowerCase()
-
-  // Extract action items based on keywords
-  if (fullText.includes("follow up") || fullText.includes("call back")) {
-    actionItems.push("Schedule follow-up call with customer")
-  }
-
-  if (fullText.includes("escalate") || fullText.includes("supervisor")) {
-    actionItems.push("Escalate issue to appropriate department")
-  }
-
-  if (fullText.includes("document") || fullText.includes("record")) {
-    actionItems.push("Document conversation details in CRM")
-  }
-
-  if (fullText.includes("training") || fullText.includes("learn")) {
-    actionItems.push("Provide additional training to agent")
-  }
-
-  if (fullText.includes("policy") || fullText.includes("procedure")) {
-    actionItems.push("Review and update relevant policies")
-  }
-
-  return actionItems.length > 0 ? actionItems : [
+  return [
     "Review conversation for quality assurance",
     "Update customer records with interaction details",
     "Monitor for similar issues in future calls"
@@ -726,72 +668,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // For Vercel, we'll use the webhook approach
-    // Start background processing and return immediately
-    const resultId = `result_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
-    
-    // In a real implementation, you'd queue this for background processing
-    // For now, we'll simulate the webhook response
-    setTimeout(async () => {
-      try {
-        // Simulate processing delay
-        await new Promise(resolve => setTimeout(resolve, 2000))
-        
-        // Send webhook with mock result
-        await fetch(`${process.env.VERCEL_URL || 'http://localhost:3000'}/api/webhook`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            id: resultId,
-            status: 'completed',
-            transcription: 'Sample transcription would appear here...',
-            summary: 'This is a sample summary of the conversation analysis.',
-            actionItems: ['Follow up with customer', 'Document interaction'],
-            sentiment: {
-              overall: 'POSITIVE',
-              confidence: 0.8,
-              segments: []
-            },
-            businessIntelligence: {
-              areasOfImprovement: ['Response time'],
-              processGaps: [],
-              trainingOpportunities: [],
-              preventiveMeasures: [],
-              customerExperienceInsights: ['Positive interaction'],
-              operationalRecommendations: [],
-              riskFactors: [],
-              qualityScore: {
-                overall: 85,
-                categories: {
-                  responsiveness: 80,
-                  empathy: 90,
-                  problemSolving: 85,
-                  communication: 88,
-                  followUp: 82,
-                }
-              }
-            },
-            vcon: {},
-            fileName: audioFile.name,
-            timestamp: new Date().toISOString()
-          }),
-        })
-      } catch (error) {
-        console.error('Webhook error:', error)
-      }
-    }, 100)
+    // Convert file to ArrayBuffer and process
+    const audioBuffer = await audioFile.arrayBuffer()
+    const result = await processAudio(audioBuffer, audioFile.name)
 
-    // Return immediately with processing status
-    return NextResponse.json({
-      status: 'processing',
-      message: 'Audio processing started. Results will be available via webhook.',
-      resultId,
-      fileName: audioFile.name,
-      fileSize: audioFile.size
-    }, {
-      status: 202, // Accepted
+    return NextResponse.json(result, {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Content-Type': 'application/json',

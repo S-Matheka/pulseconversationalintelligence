@@ -68,8 +68,6 @@ export default function ConversationAnalyzer() {
   const [result, setResult] = useState<AnalysisResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
-  const [processingStatus, setProcessingStatus] = useState<string>('')
-  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null)
   const [expandedSections, setExpandedSections] = useState({
     transcription: false,
     summary: true,
@@ -114,55 +112,17 @@ export default function ConversationAnalyzer() {
     }
   }
 
-  const pollForResults = async (resultId: string) => {
-    try {
-      const response = await fetch(`/api/webhook?id=${resultId}`)
-      if (response.ok) {
-        const data = await response.json()
-        
-        if (data.status === 'completed') {
-          // Clear polling interval
-          if (pollingInterval) {
-            clearInterval(pollingInterval)
-            setPollingInterval(null)
-          }
-          
-          setResult(data)
-          setIsProcessing(false)
-          setProcessingStatus('')
-          console.log('Processing completed successfully')
-        } else if (data.status === 'error') {
-          // Clear polling interval
-          if (pollingInterval) {
-            clearInterval(pollingInterval)
-            setPollingInterval(null)
-          }
-          
-          setError(data.error || 'Processing failed')
-          setIsProcessing(false)
-          setProcessingStatus('')
-          console.error('Processing failed:', data.error)
-        }
-        // If status is still 'processing', continue polling
-      }
-    } catch (error) {
-      console.error('Polling error:', error)
-    }
-  }
-
   const processAudio = async () => {
     if (!file) return
 
     setIsProcessing(true)
     setError(null)
     setResult(null)
-    setProcessingStatus('Starting audio processing...')
 
     try {
       const formData = new FormData()
       formData.append("audio", file)
 
-      // Use the appropriate endpoint based on environment
       const endpoint = '/api/analyze-conversation'
       
       const response = await fetch(endpoint, {
@@ -180,36 +140,18 @@ export default function ConversationAnalyzer() {
         )
       }
 
-      const responseData = isJson ? await response.json() : null
+      const analysisResult = isJson ? await response.json() : null
 
-      if (responseData && responseData.status === 'processing') {
-        setProcessingStatus('Audio uploaded successfully. Processing in background...')
-        
-        // Start polling for results
-        const interval = setInterval(() => {
-          pollForResults(responseData.resultId || 'latest')
-        }, 3000) // Poll every 3 seconds
-        
-        setPollingInterval(interval)
-        
-        // Set a timeout to stop polling after 5 minutes
-        setTimeout(() => {
-          if (interval) {
-            clearInterval(interval)
-            setPollingInterval(null)
-            setIsProcessing(false)
-            setError('Processing timed out. Please try again.')
-            setProcessingStatus('')
-          }
-        }, 300000) // 5 minutes
+      if (analysisResult) {
+        setResult(analysisResult)
       } else {
-        throw new Error("Unexpected response from server")
+        throw new Error("API returned non-JSON response")
       }
     } catch (err) {
       console.error("Processing error:", err)
       setError(err instanceof Error ? err.message : "An error occurred while processing the audio")
+    } finally {
       setIsProcessing(false)
-      setProcessingStatus('')
     }
   }
 
@@ -304,17 +246,6 @@ export default function ConversationAnalyzer() {
             {error && (
               <Alert className="mt-4 border-red-200 bg-red-50">
                 <AlertDescription className="text-red-800">{error}</AlertDescription>
-              </Alert>
-            )}
-
-            {processingStatus && (
-              <Alert className="mt-4 border-blue-200 bg-blue-50">
-                <AlertDescription className="text-blue-800">
-                  <div className="flex items-center">
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    {processingStatus}
-                  </div>
-                </AlertDescription>
               </Alert>
             )}
 

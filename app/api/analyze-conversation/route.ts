@@ -271,7 +271,7 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `Analyze this customer service conversation and provide a focused summary:
+  const prompt = `Analyze this customer service conversation and provide a concise but detailed summary:
 
 AGENT: ${agentText}
 
@@ -279,46 +279,21 @@ CUSTOMER: ${customerText}
 
 SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment} (${Math.round(s.confidence * 100)}%)`).join(', ')}
 
-Look for these specific keywords and issues:
-
-EMOTION DETECTION:
-- Frustration: frustrated, annoyed, irritated, exasperated, neglected, ignored, not being helped, no one is telling us anything, no updates, not informed, left in the dark, I wish someone would update me, I feel left out, I'm still waiting, I'm not sure what's happening, I haven't heard back, I'm not being kept in the loop, I'm waiting for a response, I'm not sure what's going on
-- Anger: angry, upset, fed up, tired of, sick of, had enough
-- Disappointment: disappointed, unhappy, dissatisfied
-- Stress: stressed, worried, concerned, confused, exhausted
-- Neglect/Lack of Communication: "no one is telling us anything", "no one is helping", "not being updated", "not informed", "left in the dark", "no communication", "no updates", "I wish someone would update me", "I feel left out", "I'm still waiting", "I'm not sure what's happening", "I haven't heard back", "I'm not being kept in the loop", "I'm waiting for a response", "I'm not sure what's going on"
-
-COMPLAINT DETECTION:
-- Any complaint, mismatch, or dissatisfaction (e.g., "I ordered this, I got that", "not what I expected", "not satisfied", "this isn't working as advertised", "this doesn't meet my needs", "this is wrong", "I want to complain", "I want to escalate", "I want a refund", "I want to cancel") should be flagged as negative sentiment and a churn risk, even if stated politely or indirectly. Analyze the meaning and context, not just keywords.
-
-SERVICE ISSUES:
-- Food Service: cold food, damaged items, spoiled meals, wrong food orders, incorrect items, pizza delivery problems
-- General Service: poor service, bad experience, terrible service, wrong items received, incorrect orders, lack of communication, no updates
-- Billing Issues: overcharging, wrong charges, billing errors, overcharged, undercharged
-
-CUSTOMER ACTIONS:
-- cancel, return, refund, complaint, escalate, speak to supervisor, file complaint, leave review, switch providers, never use again, warn others
-
-POLITE COMPLAINTS:
-- "I ordered this but got that", "it's not what I expected", "this isn't working as advertised", "I'm not satisfied", "this doesn't meet my needs"
-
-Treat any complaint or expression of dissatisfaction as negative sentiment and a business risk, regardless of politeness or wording. Always analyze the meaning/context, not just keywords.
-
-Provide a concise summary in this exact format:
-"The customer wanted to [main purpose] due to [specific reason/trigger]."
-
-Focus ONLY on:
-1. What the customer wanted (their main purpose)
-2. Why they wanted it (the specific reason or trigger)
-
-Do NOT include call duration, number of exchanges, agent responses, or technical details. Keep it simple and direct.
+Instructions:
+- Focus on the customer's main issue and what triggered the call.
+- Always include specific details: what the customer wanted, what went wrong, and any context (e.g., product, service, timing, agent response).
+- If there was a complaint, mismatch, or dissatisfaction, state it clearly.
+- If the customer expressed frustration, disappointment, or churn risk, mention it.
+- Do NOT be vague or generic. Do NOT just say 'poor service' or 'billing issue'—be specific (e.g., 'customer received a veggie pizza instead of pepperoni and was not updated about the delay').
+- Use this format: "The customer wanted to [main purpose] due to [specific reason/trigger/context]. [Add any key context or escalation.]"
 
 Examples:
-- "The customer wanted to cancel their service due to poor service quality."
-- "The customer wanted a refund due to receiving wrong items."
-- "The customer wanted to speak to a supervisor due to billing errors."
-- "The customer wanted an update due to lack of communication and feeling neglected."
-- "The customer wanted a resolution due to receiving the wrong product, which was not what they expected."`
+- "The customer wanted to cancel their subscription due to repeated billing errors and lack of support."
+- "The customer wanted a refund because they received a veggie pizza instead of the pepperoni pizza they ordered, and no one updated them about the change."
+- "The customer wanted to escalate their complaint after multiple failed delivery attempts and poor communication from the support team."
+- "The customer wanted to clarify a charge on their account after being overcharged for a service they did not receive."
+
+Be as specific and accurate as possible. Never be vague or general.`
 
   const aiSummary = await callGemmaAPI(prompt)
   
@@ -725,28 +700,6 @@ function createVcon(transcript: any, audioUrl: string, fileName: string, busines
   }
 }
 
-// Advanced AI sentiment analysis for each utterance
-async function analyzeUtteranceSentiment(utterance: any): Promise<{text: string, sentiment: string, confidence: number, churnRisk: boolean}> {
-  const prompt = `Analyze the following customer service utterance for sentiment and churn risk. Use advanced context-aware logic: flag any complaint, mismatch, dissatisfaction, or indirect/polite negative as negative sentiment and churn risk. Respond with a JSON object: {"sentiment": "POSITIVE"|"NEGATIVE"|"NEUTRAL", "confidence": 0-1, "churnRisk": true|false}.\nUtterance: "${utterance.text}"`;
-  const aiResponse = await callGemmaAPI(prompt);
-  try {
-    const match = aiResponse.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]);
-      return {
-        text: utterance.text,
-        sentiment: parsed.sentiment || 'NEUTRAL',
-        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
-        churnRisk: !!parsed.churnRisk
-      };
-    }
-  } catch (e) {
-    // fallback to NEUTRAL if parsing fails
-    return { text: utterance.text, sentiment: 'NEUTRAL', confidence: 0.5, churnRisk: false };
-  }
-  return { text: utterance.text, sentiment: 'NEUTRAL', confidence: 0.5, churnRisk: false };
-}
-
 // Main processing function
 async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
   try {
@@ -799,27 +752,15 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       businessIntelligence = generateFallbackBusinessIntelligence(transcript)
     }
 
-    // Advanced AI sentiment analysis for each utterance
-    const utterances = transcript.utterances || [];
-    let aiSegments: any[] = [];
-    if (utterances.length > 0) {
-      aiSegments = await Promise.all(
-        utterances.map((u: any) => analyzeUtteranceSentiment(u))
-      );
-    }
-    // Compute overall sentiment from AI segments
-    const sentimentCounts = aiSegments.reduce((acc, seg) => {
-      acc[seg.sentiment] = (acc[seg.sentiment] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-    const dominantSentiment = Object.entries(sentimentCounts).sort(([, a], [, b]) => (b as number) - (a as number))[0] || ['NEUTRAL', 1];
-    const sentiment = {
-      overall: dominantSentiment[0],
-      confidence: aiSegments.length > 0 ? (sentimentCounts[dominantSentiment[0]] / aiSegments.length) : 0.5,
-      segments: aiSegments
-    };
-
-    // Post-process segment sentiment: flag complaints as negative
+    // Use AssemblyAI sentiment analysis for segments
+    const sentimentResults = transcript.sentiment_analysis_results || [];
+    let aiSegments = sentimentResults.map((result: any) => ({
+      text: result.text,
+      sentiment: result.sentiment,
+      confidence: result.confidence,
+      churnRisk: false
+    }));
+    // Post-process segment sentiment: flag complaints/neglect as negative
     const complaintPatterns = [
       /i (ordered|requested|expected) .+ (but|and) (got|received) .+/i,
       /not what i expected/i,
@@ -844,18 +785,29 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       /left in the dark/i,
       /no communication/i,
       /no updates/i
-    ]
-    sentiment.segments = sentiment.segments.map((seg: any) => {
+    ];
+    aiSegments = aiSegments.map((seg: any) => {
       if (
         complaintPatterns.some((pat) => pat.test(seg.text)) &&
         seg.sentiment !== 'NEGATIVE'
       ) {
-        return { ...seg, sentiment: 'NEGATIVE', confidence: Math.max(seg.confidence, 0.8) }
+        return { ...seg, sentiment: 'NEGATIVE', confidence: Math.max(seg.confidence, 0.8), churnRisk: true };
       }
-      return seg
-    })
+      return seg;
+    });
+    // Compute overall sentiment from segments
+    const sentimentCounts = aiSegments.reduce((acc: Record<string, number>, seg: any) => {
+      acc[seg.sentiment] = (acc[seg.sentiment] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const dominantSentiment = Object.entries(sentimentCounts).sort(([, a], [, b]) => (b as number) - (a as number))[0] || ['NEUTRAL', 1];
+    const sentiment = {
+      overall: dominantSentiment[0],
+      confidence: aiSegments.length > 0 ? (sentimentCounts[dominantSentiment[0]] / aiSegments.length) : 0.5,
+      segments: aiSegments
+    };
 
-    // Enforce: If transcript contains 'no one is telling us anything', force negative sentiment and flag as risk
+    // Post-process segment sentiment: flag complaints as negative
     const transcriptText = (transcript.text || '').toLowerCase()
     if (transcriptText.includes('no one is telling us anything')) {
       // Force negative sentiment if not already

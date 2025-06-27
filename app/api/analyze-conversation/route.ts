@@ -240,13 +240,32 @@ function detectSpeakerRoles(transcript: any) {
 
 function inferNonAgentRole(transcript: any): 'Patient' | 'Guest' | 'Customer' {
   const text = (transcript.text || '').toLowerCase();
-  if (/\b(hospital|clinic|doctor|nurse|treatment|appointment|medical|medicine|prescription|ward|patient)\b/.test(text)) {
+  const utterances = transcript.utterances || [];
+
+  // Count domain-specific keywords
+  const medicalKeywords = ['hospital', 'clinic', 'doctor', 'nurse', 'treatment', 'appointment', 'medical', 'medicine', 'prescription', 'ward', 'patient'];
+  const hospitalityKeywords = ['hotel', 'room', 'check-in', 'checkin', 'reservation', 'hospitality', 'guest', 'suite', 'concierge', 'lobby', 'stay'];
+  const retailKeywords = ['order', 'delivery', 'refund', 'product', 'billing', 'charge', 'purchase', 'store'];
+
+  let medicalCount = 0;
+  let hospitalityCount = 0;
+  let retailCount = 0;
+
+  utterances.forEach((u: any) => {
+    const utteranceText = u.text.toLowerCase();
+    medicalCount += medicalKeywords.filter(k => utteranceText.includes(k)).length;
+    hospitalityCount += hospitalityKeywords.filter(k => utteranceText.includes(k)).length;
+    retailCount += retailKeywords.filter(k => utteranceText.includes(k)).length;
+  });
+
+  // Prioritize based on keyword frequency
+  if (medicalCount > hospitalityCount && medicalCount > retailCount) {
     return 'Patient';
-  }
-  if (/\b(hotel|room|check-in|checkin|reservation|hospitality|guest|suite|concierge|lobby|stay)\b/.test(text)) {
+  } else if (hospitalityCount > medicalCount && hospitalityCount > retailCount) {
     return 'Guest';
+  } else {
+    return 'Customer';
   }
-  return 'Customer';
 }
 
 // Format transcription with speaker labels
@@ -288,39 +307,33 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
   const nonAgentRole = inferNonAgentRole(transcript)
   const nonAgentRoleLower = nonAgentRole.toLowerCase()
 
-  const prompt = `You are an expert call analyst. Carefully read through this entire conversation transcript and create a factually accurate summary.
+  const prompt = `You are an expert call analyst. Summarize this customer service conversation transcript accurately and concisely.
 
-FULL CONVERSATION TRANSCRIPT:
+FULL TRANSCRIPT:
 AGENT: ${agentText}
 ${nonAgentRole.toUpperCase()}: ${customerText}
 
 INSTRUCTIONS:
-1. READ THE ENTIRE TRANSCRIPT CAREFULLY - every word matters
-2. Identify the EXACT purpose of the call (what the ${nonAgentRoleLower} wanted to accomplish)
-3. Identify the SPECIFIC reason/trigger that caused them to call
-4. Use ONLY information that is explicitly stated in the transcript
-5. Be factual and accurate - don't make assumptions
-6. Use the role: "${nonAgentRoleLower}"
-7. Format: "The ${nonAgentRoleLower} called to [exact purpose] because of [specific reason from transcript]"
+1. Identify the EXACT purpose of the ${nonAgentRoleLower}'s call (e.g., cancel, refund, complain, reschedule).
+2. Identify the SPECIFIC reason for the call based ONLY on the ${nonAgentRoleLower}'s explicit statements.
+3. Use this EXACT format: "The ${nonAgentRoleLower} called to [purpose] because [specific reason]."
+4. Avoid assumptions or inferences beyond the transcript.
+5. Ensure the summary is professional, concise, and directly reflects the transcript content.
+6. Use "${nonAgentRoleLower}" as the role label.
 
-ANALYSIS STEPS:
-- What did the ${nonAgentRoleLower} explicitly say they wanted to do?
-- What specific problem, issue, or situation did they mention?
-- What words did they use to describe their concern?
-- What triggered this call according to their own words?
+EXAMPLES:
+- "The guest called to cancel their reservation because of a scheduling conflict."
+- "The patient called to reschedule an appointment because of a delayed medical procedure."
+- "The customer called to request a refund because of receiving a damaged product."
 
-EXAMPLES OF GOOD SUMMARIES:
-- "The guest called to cancel their hotel membership because of frequent billing errors and poor customer service."
-- "The patient called to reschedule their appointment because of a scheduling conflict with their work schedule."
-- "The customer called to request a refund because of receiving damaged items in their delivery."
-- "The guest called to complain about room service because of cold food and 2-hour delivery delays."
+REJECTED EXAMPLES:
+- "The customer called about an issue." (too vague)
+- "The guest called to complain." (missing specific reason)
 
-EXAMPLES OF BAD SUMMARIES:
-- "The guest called to cancel." (missing specific reason)
-- "The customer called to get help." (too vague)
-- "The patient called about an issue." (not specific)
-
-IMPORTANT: Base your summary ONLY on what is actually stated in the transcript. Be specific about the exact purpose and the specific reason mentioned by the ${nonAgentRoleLower}.`
+ANALYZE:
+- What did the ${nonAgentRoleLower} say they wanted to achieve?
+- What specific issue or trigger did they mention?
+- Use their exact words or close paraphrases for accuracy.`
 
   const aiSummary = await callGemmaAPI(prompt)
   
@@ -331,111 +344,66 @@ IMPORTANT: Base your summary ONLY on what is actually stated in the transcript. 
   
   // If AI fails, use intelligent fallback
   if (aiSummary.includes("AI analysis unavailable")) {
-    console.log("AI failed, using intelligent fallback")
+    console.log("AI failed, using intelligent fallback");
+
+    const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase();
+    const sentimentResults = transcript.sentiment_analysis_results || [];
+    const negativeSentiments = sentimentResults.filter((s: any) => s.sentiment === "NEGATIVE").length;
     
-    // Analyze customer text to create a detailed summary
-    const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
+    // Define complaint patterns first
+    const complaintPatterns = [
+      { pattern: /cold food|wrong food|wrong order|incorrect item/i, reason: "issues with food order accuracy" },
+      { pattern: /damaged|spoiled|broken/i, reason: "damaged or spoiled items" },
+      { pattern: /billing|overcharged|wrong charge/i, reason: "billing errors" },
+      { pattern: /poor service|bad experience|unprofessional/i, reason: "poor service quality" },
+      { pattern: /no one is telling|no updates|not informed/i, reason: "lack of communication" },
+      { pattern: /late|delayed/i, reason: "service delays" },
+      { pattern: /rude|unhelpful/i, reason: "unhelpful staff behavior" },
+      { pattern: /dirty|unclean/i, reason: "unclean facilities" },
+    ];
     
-    // Determine the main action
-    let action = "get assistance"
+    const hasComplaint = sentimentResults.some((s: any) => 
+      complaintPatterns.some(({ pattern }) => pattern.test(s.text))
+    );
+
+    let action = "get assistance";
+    let reason = "general inquiry";
+
+    // Determine action
     if (customerText.includes("cancel") || customerText.includes("terminate")) {
-      action = "cancel"
+      action = "cancel their service";
     } else if (customerText.includes("refund") || customerText.includes("money back")) {
-      action = "request a refund"
-    } else if (customerText.includes("complaint") || customerText.includes("complain")) {
-      action = "file a complaint"
-    } else if (customerText.includes("reschedule") || customerText.includes("reschedule")) {
-      action = "reschedule"
+      action = "request a refund";
+    } else if (customerText.includes("complaint") || customerText.includes("complain") || hasComplaint) {
+      action = "file a complaint";
+    } else if (customerText.includes("reschedule") || customerText.includes("appointment")) {
+      action = "reschedule an appointment";
     } else if (customerText.includes("escalate") || customerText.includes("supervisor")) {
-      action = "escalate to supervisor"
-    } else if (customerText.includes("clarification") || customerText.includes("explain")) {
-      action = "get clarification"
+      action = "escalate the issue";
+    } else if (negativeSentiments > sentimentResults.length * 0.3) {
+      action = "address a concern"; // Use sentiment to infer a problem
     }
-    
-    // Determine the specific reason
-    let reason = "general inquiry"
-    if (customerText.includes("cold food") || customerText.includes("cold pizza")) {
-      reason = "cold food delivery"
-    } else if (customerText.includes("wrong food") || customerText.includes("wrong order") || (customerText.includes("ordered") && customerText.includes("got"))) {
-      reason = "receiving wrong items"
-    } else if (customerText.includes("damaged") || customerText.includes("spoiled") || customerText.includes("broken")) {
-      reason = "damaged or spoiled items"
-    } else if (customerText.includes("poor service") || customerText.includes("bad experience") || customerText.includes("terrible service")) {
-      reason = "poor service quality"
-    } else if (customerText.includes("billing") || customerText.includes("overcharged") || customerText.includes("wrong charges")) {
-      reason = "billing issues"
-    } else if (customerText.includes("no one is telling") || customerText.includes("no updates") || customerText.includes("not informed")) {
-      reason = "lack of communication and updates"
-    } else if (customerText.includes("appointment") && customerText.includes("delay")) {
-      reason = "appointment delay and scheduling issues"
-    } else if (customerText.includes("room") && customerText.includes("different")) {
-      reason = "receiving different room than reserved"
-    }
-    
-    // If still generic, try to extract more specific details
-    if (reason === "general inquiry" || reason === "poor service quality") {
-      // Look for more specific indicators
-      if (customerText.includes("waiting") || customerText.includes("waited")) {
-        reason = "excessive waiting time and delays"
-      } else if (customerText.includes("rude") || customerText.includes("unprofessional")) {
-        reason = "rude and unprofessional staff behavior"
-      } else if (customerText.includes("dirty") || customerText.includes("clean")) {
-        reason = "dirty or unclean facilities"
-      } else if (customerText.includes("noise") || customerText.includes("loud")) {
-        reason = "excessive noise and disturbance"
-      } else if (customerText.includes("late") || customerText.includes("delayed")) {
-        reason = "late delivery or service delays"
-      } else if (customerText.includes("expensive") || customerText.includes("overpriced")) {
-        reason = "overpriced services or hidden charges"
-      } else if (customerText.includes("broken") || customerText.includes("not working")) {
-        reason = "broken equipment or non-functional services"
-      } else if (customerText.includes("rude") || customerText.includes("unhelpful")) {
-        reason = "unhelpful and rude customer service"
-      } else if (customerText.includes("mistake") || customerText.includes("error")) {
-        reason = "service errors and mistakes"
-      } else if (customerText.includes("promise") && customerText.includes("broken")) {
-        reason = "broken promises and commitments"
-      } else if (customerText.includes("quality") && customerText.includes("poor")) {
-        reason = "poor product or service quality"
-      } else if (customerText.includes("communication") && customerText.includes("lack")) {
-        reason = "lack of clear communication and updates"
-      } else if (customerText.includes("scheduling") && customerText.includes("conflict")) {
-        reason = "scheduling conflicts and appointment issues"
-      } else if (customerText.includes("membership") && customerText.includes("cancel")) {
-        reason = "dissatisfaction with membership benefits and service"
-      } else if (customerText.includes("hotel") && customerText.includes("service")) {
-        reason = "poor hotel service and accommodation issues"
-      } else if (customerText.includes("medical") && customerText.includes("care")) {
-        reason = "medical care and treatment concerns"
-      } else if (customerText.includes("food") && customerText.includes("delivery")) {
-        reason = "food delivery and quality issues"
-      } else if (customerText.includes("billing") && customerText.includes("error")) {
-        reason = "billing errors and incorrect charges"
-      } else if (customerText.includes("reservation") && customerText.includes("problem")) {
-        reason = "reservation and booking problems"
-      } else if (customerText.includes("appointment") && customerText.includes("issue")) {
-        reason = "appointment scheduling and management issues"
+
+    // Determine reason using the patterns
+    for (const { pattern, reason: r } of complaintPatterns) {
+      if (pattern.test(customerText)) {
+        reason = r;
+        break;
       }
     }
-    
-    // If still generic, try to extract from specific phrases
-    if (reason === "general inquiry" || reason === "poor service quality") {
-      // Look for specific complaint phrases
-      if (customerText.includes("not satisfied") || customerText.includes("unhappy")) {
-        reason = "overall dissatisfaction with service quality"
-      } else if (customerText.includes("not what i expected") || customerText.includes("disappointed")) {
-        reason = "service not meeting expectations and disappointment"
-      } else if (customerText.includes("never use again") || customerText.includes("switch")) {
-        reason = "intention to switch providers due to poor experience"
-      } else if (customerText.includes("waste of time") || customerText.includes("frustrated")) {
-        reason = "frustration with time wasted and poor service"
-      } else if (customerText.includes("not worth") || customerText.includes("overpriced")) {
-        reason = "service not worth the cost and overpricing concerns"
-      }
+
+    // If no specific reason found, use sentiment to refine
+    if (reason === "general inquiry" && negativeSentiments > 0) {
+      reason = "dissatisfaction with service";
     }
-    
+
+    // Final check for very short transcripts
+    if (customerText.length < 50 && reason === "general inquiry") {
+      return `The ${nonAgentRoleLower} called to discuss a concern, but specific details were not provided.`;
+    }
+
     console.log("Using fallback summary:", `The ${nonAgentRoleLower} called to ${action} because of ${reason}.`)
-    return `The ${nonAgentRoleLower} called to ${action} because of ${reason}.`
+    return `The ${nonAgentRoleLower} called to ${action} because of ${reason}.`;
   }
   
   console.log("Using AI summary:", aiSummary)

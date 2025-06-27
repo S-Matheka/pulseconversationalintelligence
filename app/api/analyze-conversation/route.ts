@@ -288,7 +288,7 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
   const nonAgentRole = inferNonAgentRole(transcript)
   const nonAgentRoleLower = nonAgentRole.toLowerCase()
 
-  const prompt = `Analyze this conversation and create a concise summary in this exact format: "The [role] called to [action] because of [reason]."
+  const prompt = `Analyze this conversation and create a concise but specific summary in this exact format: "The [role] called to [action] because of [specific reason/issue]."
 
 CONVERSATION:
 AGENT: ${agentText}
@@ -297,19 +297,25 @@ ${nonAgentRole.toUpperCase()}: ${customerText}
 Instructions:
 - Use the role: "${nonAgentRoleLower}"
 - Identify the main action the ${nonAgentRoleLower} wanted to perform
-- Identify the specific reason/trigger for the call
+- Identify the SPECIFIC reason/trigger/issue that caused the call
+- Be specific about the problem, not generic
+- Include context like service quality, timing, billing issues, etc.
 - Use reported speech style (past tense, third person)
-- Be specific about the issue, not generic
-- Format: "The ${nonAgentRoleLower} called to [action] because of [reason]."
+- Format: "The ${nonAgentRoleLower} called to [action] because of [specific reason]."
 
-Examples:
-- "The guest called to cancel the membership because of frequent poor service."
-- "The patient called to reschedule the appointment because of a scheduling conflict."
-- "The customer called to request a refund because of damaged items received."
-- "The guest called to complain about room service because of cold food delivery."
-- "The patient called to discuss medication because of side effects."
+Examples of GOOD summaries:
+- "The guest called to cancel the membership because of frequent poor service and billing errors."
+- "The patient called to reschedule the appointment because of a scheduling conflict and lack of communication from the clinic."
+- "The customer called to request a refund because of damaged items received and incorrect order fulfillment."
+- "The guest called to complain about room service because of cold food delivery and delayed response times."
+- "The patient called to discuss medication because of unexpected side effects after recent prescription changes."
 
-Be specific and accurate. Never use the wrong role label.`
+Examples of BAD summaries (too vague):
+- "The guest called to cancel." (missing reason)
+- "The customer called to get help." (too generic)
+- "The patient called about an issue." (not specific)
+
+Be specific about the actual problem or reason. Never be vague or generic.`
 
   const aiSummary = await callGemmaAPI(prompt)
   

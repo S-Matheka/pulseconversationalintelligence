@@ -253,9 +253,9 @@ export default function ConversationAnalyzer() {
               <Button
                 onClick={processAudio}
                 disabled={!file || isProcessing}
-                className="w-full bg-creo-gold text-white hover:bg-creo-gold/90 border-none"
+                className="w-full"
                 size="lg"
-                variant="outline"
+                variant="default"
               >
                 {isProcessing ? (
                   <>

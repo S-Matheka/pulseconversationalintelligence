@@ -725,6 +725,28 @@ function createVcon(transcript: any, audioUrl: string, fileName: string, busines
   }
 }
 
+// Advanced AI sentiment analysis for each utterance
+async function analyzeUtteranceSentiment(utterance: any): Promise<{text: string, sentiment: string, confidence: number, churnRisk: boolean}> {
+  const prompt = `Analyze the following customer service utterance for sentiment and churn risk. Use advanced context-aware logic: flag any complaint, mismatch, dissatisfaction, or indirect/polite negative as negative sentiment and churn risk. Respond with a JSON object: {"sentiment": "POSITIVE"|"NEGATIVE"|"NEUTRAL", "confidence": 0-1, "churnRisk": true|false}.\nUtterance: "${utterance.text}"`;
+  const aiResponse = await callGemmaAPI(prompt);
+  try {
+    const match = aiResponse.match(/\{[\s\S]*\}/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      return {
+        text: utterance.text,
+        sentiment: parsed.sentiment || 'NEUTRAL',
+        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+        churnRisk: !!parsed.churnRisk
+      };
+    }
+  } catch (e) {
+    // fallback to NEUTRAL if parsing fails
+    return { text: utterance.text, sentiment: 'NEUTRAL', confidence: 0.5, churnRisk: false };
+  }
+  return { text: utterance.text, sentiment: 'NEUTRAL', confidence: 0.5, churnRisk: false };
+}
+
 // Main processing function
 async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
   try {
@@ -777,32 +799,25 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       businessIntelligence = generateFallbackBusinessIntelligence(transcript)
     }
 
-    // Process sentiment analysis
-    const sentimentResults = transcript.sentiment_analysis_results || []
-    const aiSentiment = sentimentResults.length > 0 ? sentimentResults : []
-    // No fallback, just use AI
-    const overallSentiment =
-      aiSentiment.length > 0
-        ? aiSentiment.reduce(
-            (acc: any, curr: any) => {
-              acc[curr.sentiment] = (acc[curr.sentiment] || 0) + curr.confidence
-              return acc
-            },
-            {} as Record<string, number>,
-          )
-        : { NEUTRAL: 1 }
-
-    const dominantSentiment = Object.entries(overallSentiment).sort(([, a]: any, [, b]: any) => b - a)[0]
-
+    // Advanced AI sentiment analysis for each utterance
+    const utterances = transcript.utterances || [];
+    let aiSegments: any[] = [];
+    if (utterances.length > 0) {
+      aiSegments = await Promise.all(
+        utterances.map((u: any) => analyzeUtteranceSentiment(u))
+      );
+    }
+    // Compute overall sentiment from AI segments
+    const sentimentCounts = aiSegments.reduce((acc, seg) => {
+      acc[seg.sentiment] = (acc[seg.sentiment] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    const dominantSentiment = Object.entries(sentimentCounts).sort(([, a], [, b]) => (b as number) - (a as number))[0] || ['NEUTRAL', 1];
     const sentiment = {
       overall: dominantSentiment[0],
-      confidence: dominantSentiment[1] / (aiSentiment.length || 1),
-      segments: aiSentiment.slice(0, 10).map((result: any) => ({
-        text: result.text,
-        sentiment: result.sentiment,
-        confidence: result.confidence,
-      })),
-    }
+      confidence: aiSegments.length > 0 ? (sentimentCounts[dominantSentiment[0]] / aiSegments.length) : 0.5,
+      segments: aiSegments
+    };
 
     // Post-process segment sentiment: flag complaints as negative
     const complaintPatterns = [
@@ -819,7 +834,16 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       /wrong (item|order|product|food)/i,
       /incorrect (item|order|product|food)/i,
       /damaged|spoiled|broken/i,
-      /overcharged|wrong charge|billing error/i
+      /overcharged|wrong charge|billing error/i,
+      /no one is saying anything/i,
+      /no one is telling us anything/i,
+      /no one is updating us/i,
+      /no one is helping/i,
+      /not being informed/i,
+      /not being updated/i,
+      /left in the dark/i,
+      /no communication/i,
+      /no updates/i
     ]
     sentiment.segments = sentiment.segments.map((seg: any) => {
       if (

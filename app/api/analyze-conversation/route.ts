@@ -283,13 +283,12 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
     const nonAgentRole = inferNonAgentRole(transcript)
     const nonAgentRoleLower = nonAgentRole.toLowerCase()
     
-    // Format chapters into a summary
-    const chapterSummaries = chapters.map((chapter: any) => 
-      `${chapter.headline}: ${chapter.summary}`
-    ).join('. ')
+    // Extract the main issue from chapters
+    const mainChapter = chapters[0] // Use the first chapter as the main issue
+    const mainIssue = mainChapter.headline.toLowerCase()
     
-    // Create a summary with the correct role label
-    const summary = `The ${nonAgentRoleLower} wanted to ${chapterSummaries.toLowerCase()}.`
+    // Create a clean summary
+    const summary = `The ${nonAgentRoleLower} wanted to ${mainIssue}.`
     return summary
   }
 

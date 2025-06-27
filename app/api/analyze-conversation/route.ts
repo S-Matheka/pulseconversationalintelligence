@@ -319,49 +319,10 @@ Be specific about the actual problem or reason. Never be vague or generic.`
 
   const aiSummary = await callGemmaAPI(prompt)
   
-  // If AI fails, fall back to AssemblyAI chapters
+  // If AI fails, return error instead of vague fallback
   if (aiSummary.includes("AI analysis unavailable")) {
-    console.log("AI failed, using AssemblyAI chapters fallback")
-    const chapters = transcript.chapters || []
-    
-    if (chapters && chapters.length > 0) {
-      const mainChapter = chapters[0]
-      let mainIssue = mainChapter.headline.toLowerCase()
-      
-      // Clean up the headline
-      mainIssue = mainIssue
-        .replace(/^(i'm calling about|i'm calling to|i need to|i want to|i would like to|i'm here to|i'm calling because)/i, '')
-        .replace(/^(the caller|the customer|the guest|the patient)/i, '')
-        .replace(/^(says|said|mentioning|mention|stating|state)/i, '')
-        .trim()
-      
-      // Extract key action words
-      const actionWords = ['cancel', 'refund', 'complaint', 'reschedule', 'change', 'update', 'fix', 'help', 'assist', 'support', 'billing', 'charge', 'payment', 'appointment', 'reservation', 'booking', 'service', 'issue', 'problem']
-      
-      for (const word of actionWords) {
-        if (mainIssue.includes(word)) {
-          mainIssue = word
-          break
-        }
-      }
-      
-      if (mainIssue.length > 20) {
-        mainIssue = 'get assistance'
-      }
-      
-      return `The ${nonAgentRoleLower} called to ${mainIssue}.`
-    }
-    
-    // If no chapters, create a basic summary
-    const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
-    
-    let action = "get assistance"
-    if (customerText.includes("cancel")) action = "cancel"
-    else if (customerText.includes("refund")) action = "request a refund"
-    else if (customerText.includes("complaint")) action = "file a complaint"
-    else if (customerText.includes("reschedule")) action = "reschedule"
-    
-    return `The ${nonAgentRoleLower} called to ${action}.`
+    console.log("AI failed, returning error")
+    return "AI summary generation failed - please try again"
   }
   
   // Post-process to ensure correct role label

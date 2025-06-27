@@ -365,6 +365,68 @@ Be specific about the actual problem or reason. Never be vague or generic.`
       reason = "receiving different room than reserved"
     }
     
+    // If still generic, try to extract more specific details
+    if (reason === "general inquiry" || reason === "poor service quality") {
+      // Look for more specific indicators
+      if (customerText.includes("waiting") || customerText.includes("waited")) {
+        reason = "excessive waiting time and delays"
+      } else if (customerText.includes("rude") || customerText.includes("unprofessional")) {
+        reason = "rude and unprofessional staff behavior"
+      } else if (customerText.includes("dirty") || customerText.includes("clean")) {
+        reason = "dirty or unclean facilities"
+      } else if (customerText.includes("noise") || customerText.includes("loud")) {
+        reason = "excessive noise and disturbance"
+      } else if (customerText.includes("late") || customerText.includes("delayed")) {
+        reason = "late delivery or service delays"
+      } else if (customerText.includes("expensive") || customerText.includes("overpriced")) {
+        reason = "overpriced services or hidden charges"
+      } else if (customerText.includes("broken") || customerText.includes("not working")) {
+        reason = "broken equipment or non-functional services"
+      } else if (customerText.includes("rude") || customerText.includes("unhelpful")) {
+        reason = "unhelpful and rude customer service"
+      } else if (customerText.includes("mistake") || customerText.includes("error")) {
+        reason = "service errors and mistakes"
+      } else if (customerText.includes("promise") && customerText.includes("broken")) {
+        reason = "broken promises and commitments"
+      } else if (customerText.includes("quality") && customerText.includes("poor")) {
+        reason = "poor product or service quality"
+      } else if (customerText.includes("communication") && customerText.includes("lack")) {
+        reason = "lack of clear communication and updates"
+      } else if (customerText.includes("scheduling") && customerText.includes("conflict")) {
+        reason = "scheduling conflicts and appointment issues"
+      } else if (customerText.includes("membership") && customerText.includes("cancel")) {
+        reason = "dissatisfaction with membership benefits and service"
+      } else if (customerText.includes("hotel") && customerText.includes("service")) {
+        reason = "poor hotel service and accommodation issues"
+      } else if (customerText.includes("medical") && customerText.includes("care")) {
+        reason = "medical care and treatment concerns"
+      } else if (customerText.includes("food") && customerText.includes("delivery")) {
+        reason = "food delivery and quality issues"
+      } else if (customerText.includes("billing") && customerText.includes("error")) {
+        reason = "billing errors and incorrect charges"
+      } else if (customerText.includes("reservation") && customerText.includes("problem")) {
+        reason = "reservation and booking problems"
+      } else if (customerText.includes("appointment") && customerText.includes("issue")) {
+        reason = "appointment scheduling and management issues"
+      }
+    }
+    
+    // If still generic, try to extract from specific phrases
+    if (reason === "general inquiry" || reason === "poor service quality") {
+      // Look for specific complaint phrases
+      if (customerText.includes("not satisfied") || customerText.includes("unhappy")) {
+        reason = "overall dissatisfaction with service quality"
+      } else if (customerText.includes("not what i expected") || customerText.includes("disappointed")) {
+        reason = "service not meeting expectations and disappointment"
+      } else if (customerText.includes("never use again") || customerText.includes("switch")) {
+        reason = "intention to switch providers due to poor experience"
+      } else if (customerText.includes("waste of time") || customerText.includes("frustrated")) {
+        reason = "frustration with time wasted and poor service"
+      } else if (customerText.includes("not worth") || customerText.includes("overpriced")) {
+        reason = "service not worth the cost and overpricing concerns"
+      }
+    }
+    
     return `The ${nonAgentRoleLower} called to ${action} because of ${reason}.`
   }
   

@@ -288,34 +288,39 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
   const nonAgentRole = inferNonAgentRole(transcript)
   const nonAgentRoleLower = nonAgentRole.toLowerCase()
 
-  const prompt = `Analyze this conversation and create a concise but specific summary in this exact format: "The [role] called to [action] because of [specific reason/issue]."
+  const prompt = `You are an expert call analyst. Carefully read through this entire conversation transcript and create a factually accurate summary.
 
-CONVERSATION:
+FULL CONVERSATION TRANSCRIPT:
 AGENT: ${agentText}
 ${nonAgentRole.toUpperCase()}: ${customerText}
 
-Instructions:
-- Use the role: "${nonAgentRoleLower}"
-- Identify the main action the ${nonAgentRoleLower} wanted to perform
-- Identify the SPECIFIC reason/trigger/issue that caused the call
-- Be specific about the problem, not generic
-- Include context like service quality, timing, billing issues, etc.
-- Use reported speech style (past tense, third person)
-- Format: "The ${nonAgentRoleLower} called to [action] because of [specific reason]."
+INSTRUCTIONS:
+1. READ THE ENTIRE TRANSCRIPT CAREFULLY - every word matters
+2. Identify the EXACT purpose of the call (what the ${nonAgentRoleLower} wanted to accomplish)
+3. Identify the SPECIFIC reason/trigger that caused them to call
+4. Use ONLY information that is explicitly stated in the transcript
+5. Be factual and accurate - don't make assumptions
+6. Use the role: "${nonAgentRoleLower}"
+7. Format: "The ${nonAgentRoleLower} called to [exact purpose] because of [specific reason from transcript]"
 
-Examples of GOOD summaries:
-- "The guest called to cancel the membership because of frequent poor service and billing errors."
-- "The patient called to reschedule the appointment because of a scheduling conflict and lack of communication from the clinic."
-- "The customer called to request a refund because of damaged items received and incorrect order fulfillment."
-- "The guest called to complain about room service because of cold food delivery and delayed response times."
-- "The patient called to discuss medication because of unexpected side effects after recent prescription changes."
+ANALYSIS STEPS:
+- What did the ${nonAgentRoleLower} explicitly say they wanted to do?
+- What specific problem, issue, or situation did they mention?
+- What words did they use to describe their concern?
+- What triggered this call according to their own words?
 
-Examples of BAD summaries (too vague):
-- "The guest called to cancel." (missing reason)
-- "The customer called to get help." (too generic)
+EXAMPLES OF GOOD SUMMARIES:
+- "The guest called to cancel their hotel membership because of frequent billing errors and poor customer service."
+- "The patient called to reschedule their appointment because of a scheduling conflict with their work schedule."
+- "The customer called to request a refund because of receiving damaged items in their delivery."
+- "The guest called to complain about room service because of cold food and 2-hour delivery delays."
+
+EXAMPLES OF BAD SUMMARIES:
+- "The guest called to cancel." (missing specific reason)
+- "The customer called to get help." (too vague)
 - "The patient called about an issue." (not specific)
 
-Be specific about the actual problem or reason. Never be vague or generic.`
+IMPORTANT: Base your summary ONLY on what is actually stated in the transcript. Be specific about the exact purpose and the specific reason mentioned by the ${nonAgentRoleLower}.`
 
   const aiSummary = await callGemmaAPI(prompt)
   

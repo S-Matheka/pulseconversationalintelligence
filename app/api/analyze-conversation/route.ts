@@ -12,7 +12,7 @@ async function callGemmaAPI(prompt: string) {
     
     // Add timeout to the fetch request
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 8000) // 8 second timeout
+    const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout
     
     const response = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
       method: "POST",
@@ -153,8 +153,8 @@ async function pollTranscription(transcriptId: string) {
       throw new Error(`Transcription failed: ${transcript.error || 'Unknown error'}`)
     }
 
-    // Wait 4.5 seconds before polling again
-    await new Promise((resolve) => setTimeout(resolve, 4500))
+    // Wait 3 seconds before polling again
+    await new Promise((resolve) => setTimeout(resolve, 3000))
   }
   
   throw new Error(`Transcription timed out after ${maxAttempts} attempts`)
@@ -810,16 +810,15 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
 
     // Generate enhanced analysis using Meta Llama 4 Maverick for business intelligence and action items only
     console.log("Generating AI analysis...")
-    const [enhancedBusinessIntelligence, enhancedActionItems] = await Promise.allSettled([
+    const [enhancedSummary, enhancedBusinessIntelligence, enhancedActionItems] = await Promise.allSettled([
+      generateEnhancedSummary(transcript),
       generateEnhancedBusinessIntelligence(transcript),
       extractEnhancedActionItems(transcript)
     ])
 
-    // Generate summary using AI with proper prompt
-    console.log("Generating summary using AI with proper prompt...")
-    const summary = await generateEnhancedSummary(transcript)
-    console.log("Summary generated:", summary)
+    console.log("AI analysis completed")
 
+    let summary = enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : "AI summary generation failed - please try again"
     let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateFallbackBusinessIntelligence(transcript)
     let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractFallbackActionItems(transcript)
 

@@ -280,16 +280,21 @@ CUSTOMER: ${customerText}
 SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment} (${Math.round(s.confidence * 100)}%)`).join(', ')}
 
 Instructions:
-- Focus on the customer's main issue and what triggered the call.
-- Always include specific details: what the customer wanted, what went wrong, and any context (e.g., product, service, timing, agent response).
+- Analyze the conversation context and refer to the non-agent as:
+  - 'patient' if the context is medical/hospital/clinic (mentions of doctor, nurse, treatment, appointment, etc.)
+  - 'guest' if the context is hotel/hospitality (mentions of hotel, room, check-in, reservation, hospitality, etc.)
+  - 'customer' in all other cases (retail, service, general)
+- Always refer to the agent as 'agent'.
+- Focus on the non-agent's main issue and what triggered the call.
+- Always include specific details: what the non-agent wanted, what went wrong, and any context (e.g., product, service, timing, agent response).
 - If there was a complaint, mismatch, or dissatisfaction, state it clearly.
-- If the customer expressed frustration, disappointment, or churn risk, mention it.
-- Do NOT be vague or generic. Do NOT just say 'poor service' or 'billing issue'—be specific (e.g., 'customer received a veggie pizza instead of pepperoni and was not updated about the delay').
-- Use this format: "The customer wanted to [main purpose] due to [specific reason/trigger/context]. [Add any key context or escalation.]"
+- If the non-agent expressed frustration, disappointment, or churn risk, mention it.
+- Do NOT be vague or generic. Do NOT just say 'poor service' or 'billing issue'—be specific (e.g., 'guest received a different room than reserved and was not updated about the change').
+- Use this format: "The [role] wanted to [main purpose] due to [specific reason/trigger/context]. [Add any key context or escalation.]"
 
 Examples:
-- "The customer wanted to cancel their subscription due to repeated billing errors and lack of support."
-- "The customer wanted a refund because they received a veggie pizza instead of the pepperoni pizza they ordered, and no one updated them about the change."
+- "The patient wanted to reschedule their appointment due to a scheduling conflict and lack of communication from the clinic."
+- "The guest wanted a refund because they received a different room than reserved, and no one updated them about the change."
 - "The customer wanted to escalate their complaint after multiple failed delivery attempts and poor communication from the support team."
 - "The customer wanted to clarify a charge on their account after being overcharged for a service they did not receive."
 
@@ -345,6 +350,14 @@ AGENT: ${agentText}
 CUSTOMER: ${customerText}
 
 SENTIMENT: ${sentimentResults.map((s: any) => `${s.sentiment}`).join(', ')}
+
+Instructions:
+- Analyze the conversation context and refer to the non-agent as:
+  - 'patient' if the context is medical/hospital/clinic (mentions of doctor, nurse, treatment, appointment, etc.)
+  - 'guest' if the context is hotel/hospitality (mentions of hotel, room, check-in, reservation, hospitality, etc.)
+  - 'customer' in all other cases (retail, service, general)
+- Always refer to the agent as 'agent'.
+- Provide all insights, risks, and recommendations using the correct role label for the non-agent.
 
 Look for these specific keywords and issues:
 
@@ -458,6 +471,14 @@ async function extractEnhancedActionItems(transcript: any): Promise<string[]> {
 AGENT: ${agentText}
 
 CUSTOMER: ${customerText}
+
+Instructions:
+- Analyze the conversation context and refer to the non-agent as:
+  - 'patient' if the context is medical/hospital/clinic (mentions of doctor, nurse, treatment, appointment, etc.)
+  - 'guest' if the context is hotel/hospitality (mentions of hotel, room, check-in, reservation, hospitality, etc.)
+  - 'customer' in all other cases (retail, service, general)
+- Always refer to the agent as 'agent'.
+- Write all action items using the correct role label for the non-agent.
 
 Look for these specific issues and keywords:
 

@@ -285,7 +285,34 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
     
     // Extract the main issue from chapters
     const mainChapter = chapters[0] // Use the first chapter as the main issue
-    const mainIssue = mainChapter.headline.toLowerCase()
+    
+    // Clean up the headline to extract the actual issue
+    let mainIssue = mainChapter.headline.toLowerCase()
+    
+    // Remove common conversation starters and extract the core issue
+    mainIssue = mainIssue
+      .replace(/^(i'm calling about|i'm calling to|i need to|i want to|i would like to|i'm here to|i'm calling because)/i, '')
+      .replace(/^(the caller|the customer|the guest|the patient)/i, '')
+      .replace(/^(says|said|mentioning|mention|stating|state)/i, '')
+      .trim()
+    
+    // If the issue is still too long or contains quotes, extract key words
+    if (mainIssue.length > 50 || mainIssue.includes('"') || mainIssue.includes("'")) {
+      // Extract key action words
+      const actionWords = ['cancel', 'refund', 'complaint', 'reschedule', 'change', 'update', 'fix', 'help', 'assist', 'support', 'billing', 'charge', 'payment', 'appointment', 'reservation', 'booking', 'service', 'issue', 'problem']
+      
+      for (const word of actionWords) {
+        if (mainIssue.includes(word)) {
+          mainIssue = word
+          break
+        }
+      }
+      
+      // If no action word found, use a generic term
+      if (mainIssue.length > 20) {
+        mainIssue = 'get assistance'
+      }
+    }
     
     // Create a clean summary
     const summary = `The ${nonAgentRoleLower} wanted to ${mainIssue}.`

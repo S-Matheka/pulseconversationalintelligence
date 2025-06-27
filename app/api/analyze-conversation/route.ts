@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const ASSEMBLYAI_API_KEY = process.env.ASSEMBLYAI_API_KEY || "4ee04704fdba4972a2c98ee62760a4c8"
 const ASSEMBLYAI_BASE_URL = "https://api.assemblyai.com/v2"
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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"
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || "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"
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-// Call Google Gemma 3N 4B for enhanced analysis
+// Call Meta Llama 4 Maverick for enhanced analysis
 async function callGemmaAPI(prompt: string) {
   try {
-    console.log("Calling Gemma API with prompt:", prompt.substring(0, 100) + "...")
+    console.log("Calling Llama API with prompt:", prompt.substring(0, 100) + "...")
     
     // Add timeout to the fetch request
     const controller = new AbortController()
@@ -23,7 +23,7 @@ async function callGemmaAPI(prompt: string) {
         "X-Title": "Conversation Analyzer"
       },
       body: JSON.stringify({
-        model: "google/gemma-3n-4b",
+        model: "meta-llama/llama-4-maverick",
         messages: [
           {
             role: "system",
@@ -41,28 +41,28 @@ async function callGemmaAPI(prompt: string) {
     })
 
     clearTimeout(timeoutId)
-    console.log("Gemma API response status:", response.status)
+    console.log("Llama API response status:", response.status)
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error("Gemma API error response:", errorText)
-      throw new Error(`Gemma API error: ${response.status} - ${errorText}`)
+      console.error("Llama API error response:", errorText)
+      throw new Error(`Llama API error: ${response.status} - ${errorText}`)
     }
 
     const data = await response.json()
-    console.log("Gemma API response data:", JSON.stringify(data, null, 2))
+    console.log("Llama API response data:", JSON.stringify(data, null, 2))
     
     const content = data.choices?.[0]?.message?.content
-    console.log("Gemma API content extracted:", content)
+    console.log("Llama API content extracted:", content)
     
     if (!content) {
-      console.error("No content in Gemma API response:", data)
+      console.error("No content in Llama API response:", data)
       return "AI analysis unavailable - no content received"
     }
     
     return content
   } catch (error: any) {
-    console.error("Gemma API error:", error)
+    console.error("Llama API error:", error)
     if (error.name === 'AbortError') {
       return "AI analysis unavailable - request timed out"
     }
@@ -312,6 +312,51 @@ Examples:
 Be specific and accurate. Never use the wrong role label.`
 
   const aiSummary = await callGemmaAPI(prompt)
+  
+  // If AI fails, fall back to AssemblyAI chapters
+  if (aiSummary.includes("AI analysis unavailable")) {
+    console.log("AI failed, using AssemblyAI chapters fallback")
+    const chapters = transcript.chapters || []
+    
+    if (chapters && chapters.length > 0) {
+      const mainChapter = chapters[0]
+      let mainIssue = mainChapter.headline.toLowerCase()
+      
+      // Clean up the headline
+      mainIssue = mainIssue
+        .replace(/^(i'm calling about|i'm calling to|i need to|i want to|i would like to|i'm here to|i'm calling because)/i, '')
+        .replace(/^(the caller|the customer|the guest|the patient)/i, '')
+        .replace(/^(says|said|mentioning|mention|stating|state)/i, '')
+        .trim()
+      
+      // Extract key action words
+      const actionWords = ['cancel', 'refund', 'complaint', 'reschedule', 'change', 'update', 'fix', 'help', 'assist', 'support', 'billing', 'charge', 'payment', 'appointment', 'reservation', 'booking', 'service', 'issue', 'problem']
+      
+      for (const word of actionWords) {
+        if (mainIssue.includes(word)) {
+          mainIssue = word
+          break
+        }
+      }
+      
+      if (mainIssue.length > 20) {
+        mainIssue = 'get assistance'
+      }
+      
+      return `The ${nonAgentRoleLower} called to ${mainIssue}.`
+    }
+    
+    // If no chapters, create a basic summary
+    const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
+    
+    let action = "get assistance"
+    if (customerText.includes("cancel")) action = "cancel"
+    else if (customerText.includes("refund")) action = "request a refund"
+    else if (customerText.includes("complaint")) action = "file a complaint"
+    else if (customerText.includes("reschedule")) action = "reschedule"
+    
+    return `The ${nonAgentRoleLower} called to ${action}.`
+  }
   
   // Post-process to ensure correct role label
   let summary = aiSummary
@@ -713,7 +758,7 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
     const transcript = await pollTranscription(transcriptId)
     console.log("Transcription completed")
 
-    // Generate enhanced analysis using Gemma 3N 4B for business intelligence and action items only
+    // Generate enhanced analysis using Meta Llama 4 Maverick for business intelligence and action items only
     console.log("Generating AI analysis...")
     const [enhancedBusinessIntelligence, enhancedActionItems] = await Promise.allSettled([
       generateEnhancedBusinessIntelligence(transcript),

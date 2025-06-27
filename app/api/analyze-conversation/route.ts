@@ -236,6 +236,17 @@ function detectSpeakerRoles(transcript: any) {
   return speakerRoles
 }
 
+function inferNonAgentRole(transcript: any): 'Patient' | 'Guest' | 'Customer' {
+  const text = (transcript.text || '').toLowerCase();
+  if (/\b(hospital|clinic|doctor|nurse|treatment|appointment|medical|medicine|prescription|ward|patient)\b/.test(text)) {
+    return 'Patient';
+  }
+  if (/\b(hotel|room|check-in|checkin|reservation|hospitality|guest|suite|concierge|lobby|stay)\b/.test(text)) {
+    return 'Guest';
+  }
+  return 'Customer';
+}
+
 // Format transcription with speaker labels
 function formatTranscriptionWithSpeakers(transcript: any): string {
   if (!transcript.utterances || transcript.utterances.length === 0) {
@@ -243,11 +254,12 @@ function formatTranscriptionWithSpeakers(transcript: any): string {
   }
 
   const speakerRoles = detectSpeakerRoles(transcript)
+  const nonAgentRole = inferNonAgentRole(transcript)
 
   return transcript.utterances
     .map((utterance: any) => {
       const role = speakerRoles[utterance.speaker] || "unknown"
-      const roleLabel = role === "agent" ? "🎧 Agent" : "👤 Customer"
+      const roleLabel = role === "agent" ? "🎧 Agent" : `👤 ${nonAgentRole}`
       const timestamp = `[${Math.floor(utterance.start / 1000)}:${String(Math.floor((utterance.start % 1000) / 10)).padStart(2, "0")}]`
 
       return `${timestamp} ${roleLabel}: ${utterance.text}`
@@ -271,7 +283,7 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `Analyze this customer service conversation and provide a concise but detailed summary:
+  const prompt = `SYSTEM: If you use the word 'customer' in a medical context (should be 'patient') or hospitality context (should be 'guest'), your answer will be rejected. You MUST infer the correct role.\n\nAnalyze this customer service conversation and provide a concise but detailed summary:
 
 AGENT: ${agentText}
 
@@ -300,15 +312,19 @@ Examples:
 - "The customer wanted to clarify a charge on their account after being overcharged for a service they did not receive."
 - "The customer wanted to return a product that was delivered damaged."
 
-Final instruction: If you are unsure, make your best guess based on context, but NEVER use 'customer' if there are any medical or hospitality clues. Be specific and accurate.`
+Final instruction: If you are unsure, make your best guess based on context, but NEVER use 'customer' if there are any medical or hospitality clues. Be specific and accurate."`
 
   const aiSummary = await callGemmaAPI(prompt)
-  
-  if (aiSummary.includes("AI analysis unavailable")) {
-    return generateFallbackSummary(transcript)
+
+  // Post-process summary to replace 'customer' with 'patient' or 'guest' if context is clear
+  let summary = aiSummary
+  const text = (transcript.text || '').toLowerCase();
+  if (/\b(hospital|clinic|doctor|nurse|treatment|appointment|medical|medicine|prescription|ward|patient)\b/.test(text)) {
+    summary = summary.replace(/customer/gi, 'patient')
+  } else if (/\b(hotel|room|check-in|checkin|reservation|hospitality|guest|suite|concierge|lobby|stay)\b/.test(text)) {
+    summary = summary.replace(/customer/gi, 'guest')
   }
-  
-  return aiSummary
+  return summary
 }
 
 // Generate enhanced business intelligence using Gemma AI

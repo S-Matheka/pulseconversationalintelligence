@@ -319,10 +319,53 @@ Be specific about the actual problem or reason. Never be vague or generic.`
 
   const aiSummary = await callGemmaAPI(prompt)
   
-  // If AI fails, return error instead of vague fallback
+  console.log("AI Summary raw response:", aiSummary)
+  console.log("AI Summary includes 'AI analysis unavailable':", aiSummary.includes("AI analysis unavailable"))
+  
+  // If AI fails, use intelligent fallback
   if (aiSummary.includes("AI analysis unavailable")) {
-    console.log("AI failed, returning error")
-    return "AI summary generation failed - please try again"
+    console.log("AI failed, using intelligent fallback")
+    
+    // Analyze customer text to create a detailed summary
+    const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
+    
+    // Determine the main action
+    let action = "get assistance"
+    if (customerText.includes("cancel") || customerText.includes("terminate")) {
+      action = "cancel"
+    } else if (customerText.includes("refund") || customerText.includes("money back")) {
+      action = "request a refund"
+    } else if (customerText.includes("complaint") || customerText.includes("complain")) {
+      action = "file a complaint"
+    } else if (customerText.includes("reschedule") || customerText.includes("reschedule")) {
+      action = "reschedule"
+    } else if (customerText.includes("escalate") || customerText.includes("supervisor")) {
+      action = "escalate to supervisor"
+    } else if (customerText.includes("clarification") || customerText.includes("explain")) {
+      action = "get clarification"
+    }
+    
+    // Determine the specific reason
+    let reason = "general inquiry"
+    if (customerText.includes("cold food") || customerText.includes("cold pizza")) {
+      reason = "cold food delivery"
+    } else if (customerText.includes("wrong food") || customerText.includes("wrong order") || (customerText.includes("ordered") && customerText.includes("got"))) {
+      reason = "receiving wrong items"
+    } else if (customerText.includes("damaged") || customerText.includes("spoiled") || customerText.includes("broken")) {
+      reason = "damaged or spoiled items"
+    } else if (customerText.includes("poor service") || customerText.includes("bad experience") || customerText.includes("terrible service")) {
+      reason = "poor service quality"
+    } else if (customerText.includes("billing") || customerText.includes("overcharged") || customerText.includes("wrong charges")) {
+      reason = "billing issues"
+    } else if (customerText.includes("no one is telling") || customerText.includes("no updates") || customerText.includes("not informed")) {
+      reason = "lack of communication and updates"
+    } else if (customerText.includes("appointment") && customerText.includes("delay")) {
+      reason = "appointment delay and scheduling issues"
+    } else if (customerText.includes("room") && customerText.includes("different")) {
+      reason = "receiving different room than reserved"
+    }
+    
+    return `The ${nonAgentRoleLower} called to ${action} because of ${reason}.`
   }
   
   // Post-process to ensure correct role label

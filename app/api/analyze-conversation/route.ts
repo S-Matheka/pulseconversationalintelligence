@@ -269,69 +269,69 @@ function formatTranscriptionWithSpeakers(transcript: any): string {
     .join("\n\n")
 }
 
-// Generate enhanced summary using Gemma AI
+// Generate enhanced summary using AssemblyAI auto_chapters
 async function generateEnhancedSummary(transcript: any): Promise<string> {
   const utterances = transcript.utterances || []
-  const sentimentResults = transcript.sentiment_analysis_results || []
+  const chapters = transcript.chapters || []
 
   if (utterances.length === 0) {
     return "No conversation content available for analysis."
   }
 
+  // Use AssemblyAI's auto_chapters if available
+  if (chapters && chapters.length > 0) {
+    const nonAgentRole = inferNonAgentRole(transcript)
+    const nonAgentRoleLower = nonAgentRole.toLowerCase()
+    
+    // Format chapters into a summary
+    const chapterSummaries = chapters.map((chapter: any) => 
+      `${chapter.headline}: ${chapter.summary}`
+    ).join('. ')
+    
+    // Create a summary with the correct role label
+    const summary = `The ${nonAgentRoleLower} wanted to ${chapterSummaries.toLowerCase()}.`
+    return summary
+  }
+
+  // Fallback: create a simple summary from the conversation
   const speakerRoles = detectSpeakerRoles(transcript)
-  const agentUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "agent")
   const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
-
-  const agentText = agentUtterances.map((u: any) => u.text).join(" ")
-  const customerText = customerUtterances.map((u: any) => u.text).join(" ")
-
-  // Use the same role inference as the transcript section
+  const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
+  
   const nonAgentRole = inferNonAgentRole(transcript)
   const nonAgentRoleLower = nonAgentRole.toLowerCase()
 
-  const prompt = `SYSTEM: If you use the wrong non-agent role (should be '${nonAgentRoleLower}'), your answer will be rejected. You MUST infer and use the correct role label for the non-agent in all outputs.\n\nAnalyze this conversation and provide a concise but highly specific summary:
+  // Extract key information from customer utterances
+  let purpose = "get assistance"
+  let reason = "general inquiry"
 
-AGENT: ${agentText}
+  // Check for customer actions
+  if (customerText.includes("cancel") || customerText.includes("terminate")) {
+    purpose = "cancel their service"
+  } else if (customerText.includes("complain") || customerText.includes("complaint")) {
+    purpose = "file a complaint"
+  } else if (customerText.includes("refund") || customerText.includes("money back")) {
+    purpose = "request a refund"
+  } else if (customerText.includes("escalate") || customerText.includes("supervisor")) {
+    purpose = "speak to a supervisor"
+  } else if (customerText.includes("clarification") || customerText.includes("explain") || customerText.includes("understand")) {
+    purpose = "get clarification"
+  }
 
-${nonAgentRole.toUpperCase()}: ${customerText}
+  // Check for service issues
+  if (customerText.includes("cold food") || customerText.includes("cold pizza")) {
+    reason = "cold food delivery"
+  } else if (customerText.includes("wrong food") || customerText.includes("wrong order") || (customerText.includes("ordered") && customerText.includes("got"))) {
+    reason = "receiving wrong items"
+  } else if (customerText.includes("damaged") || customerText.includes("spoiled") || customerText.includes("broken")) {
+    reason = "damaged or spoiled items"
+  } else if (customerText.includes("poor service") || customerText.includes("bad experience") || customerText.includes("terrible service")) {
+    reason = "poor service quality"
+  } else if (customerText.includes("billing") || customerText.includes("overcharged") || customerText.includes("wrong charges")) {
+    reason = "billing issues"
+  }
 
-SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment} (${Math.round(s.confidence * 100)}%)`).join(', ')}
-
-Instructions:
-- You MUST use the correct non-agent role: '${nonAgentRoleLower}'.
-- Always refer to the agent as 'agent'.
-- Focus on the non-agent's main issue, complaint, or request and what triggered the call.
-- Extract the exact reason for the call: what the non-agent wanted, what went wrong, and any context (e.g., product, service, timing, agent response).
-- If there was a complaint, mismatch, or dissatisfaction, state it clearly and specifically (e.g., 'guest received a different room than reserved and was not updated about the change').
-- If the non-agent expressed frustration, disappointment, or churn risk, mention it.
-- Do NOT be vague or generic. Do NOT just say 'poor service' or 'billing issue'—be specific and detailed.
-- Use this format: "The ${nonAgentRoleLower} wanted to [main purpose] due to [specific reason/trigger/context]. [Add any key context or escalation.]"
-- If the main issue is a complaint, state the complaint clearly and what caused it.
-- If the non-agent's request was resolved, mention the resolution.
-- If you are unsure, make your best guess based on context, but NEVER use the wrong role label.
-
-Examples:
-- "The patient wanted to reschedule their appointment due to a scheduling conflict and lack of communication from the clinic."
-- "The patient wanted to discuss a medication side effect after a recent hospital visit."
-- "The guest wanted a refund because they received a different room than reserved, and no one updated them about the change."
-- "The guest wanted to escalate a complaint about poor room service and a missed wake-up call."
-- "The customer wanted to clarify a charge on their account after being overcharged for a service they did not receive."
-- "The customer wanted to return a product that was delivered damaged."
-
-Final instruction: Be specific and accurate. Never use the wrong role label. Never be vague.`
-
-  const aiSummary = await callGemmaAPI(prompt)
-
-  // Post-process summary to enforce correct role label everywhere
-  let summary = aiSummary
-  // Remove any fallback replacement logic, always use the inferred role
-  summary = summary.replace(/customer/gi, nonAgentRoleLower)
-  summary = summary.replace(/Customer/gi, nonAgentRole)
-  summary = summary.replace(/guest/gi, nonAgentRoleLower)
-  summary = summary.replace(/Guest/gi, nonAgentRole)
-  summary = summary.replace(/patient/gi, nonAgentRoleLower)
-  summary = summary.replace(/Patient/gi, nonAgentRole)
-  return summary
+  return `The ${nonAgentRoleLower} wanted to ${purpose} due to ${reason}.`
 }
 
 // Generate enhanced business intelligence using Gemma AI
@@ -722,31 +722,20 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
     const transcript = await pollTranscription(transcriptId)
     console.log("Transcription completed")
 
-    // Generate enhanced analysis using Gemma 3N 4B
+    // Generate enhanced analysis using Gemma 3N 4B for business intelligence and action items only
     console.log("Generating AI analysis...")
-    const [enhancedSummary, enhancedBusinessIntelligence, enhancedActionItems] = await Promise.allSettled([
-      generateEnhancedSummary(transcript),
+    const [enhancedBusinessIntelligence, enhancedActionItems] = await Promise.allSettled([
       generateEnhancedBusinessIntelligence(transcript),
       extractEnhancedActionItems(transcript)
     ])
 
-    console.log("AI Summary status:", enhancedSummary.status)
-    console.log("AI Summary value:", enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : enhancedSummary.reason)
+    // Generate summary using AssemblyAI (more reliable)
+    console.log("Generating summary using AssemblyAI...")
+    const summary = await generateEnhancedSummary(transcript)
+    console.log("Summary generated:", summary)
 
-    // Use AI results only, with minimal fallbacks only if AI completely fails
-    let summary = enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : "AI summary generation failed - please try again"
     let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateFallbackBusinessIntelligence(transcript)
     let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractFallbackActionItems(transcript)
-
-    console.log("Final summary before failure check:", summary)
-
-    // Check if AI summary failed (either Promise rejected or returned error message)
-    if (enhancedSummary.status === 'rejected' || (enhancedSummary.status === 'fulfilled' && enhancedSummary.value.includes("AI analysis unavailable"))) {
-      console.log("AI summary failed, returning error")
-      summary = "AI summary generation failed - please try again"
-    }
-
-    console.log("Final summary after failure check:", summary)
 
     // Always recalculate overall as the average of the five categories for consistency
     if (businessIntelligence.qualityScore && businessIntelligence.qualityScore.categories) {

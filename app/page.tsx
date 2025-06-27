@@ -202,7 +202,7 @@ export default function ConversationAnalyzer() {
 
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Upload Audio File</CardTitle>
+            <CardTitle className="text-center">Upload Audio File</CardTitle>
           </CardHeader>
           <CardContent>
             <div

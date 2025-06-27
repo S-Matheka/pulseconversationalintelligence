@@ -283,26 +283,30 @@ async function generateEnhancedSummary(transcript: any): Promise<string> {
   const agentText = agentUtterances.map((u: any) => u.text).join(" ")
   const customerText = customerUtterances.map((u: any) => u.text).join(" ")
 
-  const prompt = `SYSTEM: If you use the word 'customer' in a medical context (should be 'patient') or hospitality context (should be 'guest'), your answer will be rejected. You MUST infer the correct role.\n\nAnalyze this customer service conversation and provide a concise but detailed summary:
+  // Use the same role inference as the transcript section
+  const nonAgentRole = inferNonAgentRole(transcript)
+  const nonAgentRoleLower = nonAgentRole.toLowerCase()
+
+  const prompt = `SYSTEM: If you use the wrong non-agent role (should be '${nonAgentRoleLower}'), your answer will be rejected. You MUST infer and use the correct role label for the non-agent in all outputs.\n\nAnalyze this conversation and provide a concise but highly specific summary:
 
 AGENT: ${agentText}
 
-CUSTOMER: ${customerText}
+${nonAgentRole.toUpperCase()}: ${customerText}
 
 SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment} (${Math.round(s.confidence * 100)}%)`).join(', ')}
 
 Instructions:
-- You MUST infer the correct non-agent role from context:
-  - If the conversation is about medical, hospital, clinic, doctors, nurses, appointments, treatment, or anything healthcare-related, ALWAYS use 'patient' (never use 'customer' or 'guest').
-  - If the conversation is about hotels, rooms, check-in, reservations, hospitality, or anything hotel-related, ALWAYS use 'guest' (never use 'customer' or 'patient').
-  - Only use 'customer' if the context is retail, service, or general business and there are no medical or hospitality clues.
+- You MUST use the correct non-agent role: '${nonAgentRoleLower}'.
 - Always refer to the agent as 'agent'.
-- Focus on the non-agent's main issue and what triggered the call.
-- Always include specific details: what the non-agent wanted, what went wrong, and any context (e.g., product, service, timing, agent response).
-- If there was a complaint, mismatch, or dissatisfaction, state it clearly.
+- Focus on the non-agent's main issue, complaint, or request and what triggered the call.
+- Extract the exact reason for the call: what the non-agent wanted, what went wrong, and any context (e.g., product, service, timing, agent response).
+- If there was a complaint, mismatch, or dissatisfaction, state it clearly and specifically (e.g., 'guest received a different room than reserved and was not updated about the change').
 - If the non-agent expressed frustration, disappointment, or churn risk, mention it.
-- Do NOT be vague or generic. Do NOT just say 'poor service' or 'billing issue'—be specific (e.g., 'guest received a different room than reserved and was not updated about the change').
-- Use this format: "The [role] wanted to [main purpose] due to [specific reason/trigger/context]. [Add any key context or escalation.]"
+- Do NOT be vague or generic. Do NOT just say 'poor service' or 'billing issue'—be specific and detailed.
+- Use this format: "The ${nonAgentRoleLower} wanted to [main purpose] due to [specific reason/trigger/context]. [Add any key context or escalation.]"
+- If the main issue is a complaint, state the complaint clearly and what caused it.
+- If the non-agent's request was resolved, mention the resolution.
+- If you are unsure, make your best guess based on context, but NEVER use the wrong role label.
 
 Examples:
 - "The patient wanted to reschedule their appointment due to a scheduling conflict and lack of communication from the clinic."
@@ -312,18 +316,19 @@ Examples:
 - "The customer wanted to clarify a charge on their account after being overcharged for a service they did not receive."
 - "The customer wanted to return a product that was delivered damaged."
 
-Final instruction: If you are unsure, make your best guess based on context, but NEVER use 'customer' if there are any medical or hospitality clues. Be specific and accurate."`
+Final instruction: Be specific and accurate. Never use the wrong role label. Never be vague.`
 
   const aiSummary = await callGemmaAPI(prompt)
 
-  // Post-process summary to replace 'customer' with 'patient' or 'guest' if context is clear
+  // Post-process summary to enforce correct role label everywhere
   let summary = aiSummary
-  const text = (transcript.text || '').toLowerCase();
-  if (/\b(hospital|clinic|doctor|nurse|treatment|appointment|medical|medicine|prescription|ward|patient)\b/.test(text)) {
-    summary = summary.replace(/customer/gi, 'patient')
-  } else if (/\b(hotel|room|check-in|checkin|reservation|hospitality|guest|suite|concierge|lobby|stay)\b/.test(text)) {
-    summary = summary.replace(/customer/gi, 'guest')
-  }
+  // Remove any fallback replacement logic, always use the inferred role
+  summary = summary.replace(/customer/gi, nonAgentRoleLower)
+  summary = summary.replace(/Customer/gi, nonAgentRole)
+  summary = summary.replace(/guest/gi, nonAgentRoleLower)
+  summary = summary.replace(/Guest/gi, nonAgentRole)
+  summary = summary.replace(/patient/gi, nonAgentRoleLower)
+  summary = summary.replace(/Patient/gi, nonAgentRole)
   return summary
 }
 
@@ -554,52 +559,6 @@ Make each action item specific and directly related to what was discussed in THI
   return actionItems.length > 0 ? actionItems : ["No action needed"]
 }
 
-// Fallback functions
-function generateFallbackSummary(transcript: any): string {
-  const utterances = transcript.utterances || []
-  const sentimentResults = transcript.sentiment_analysis_results || []
-
-  if (utterances.length === 0) {
-    return "No conversation content available for analysis."
-  }
-
-  const speakerRoles = detectSpeakerRoles(transcript)
-  const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
-  const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
-
-  // Enhanced keyword detection for customer purpose
-  let purpose = "get assistance"
-  let reason = "general inquiry"
-  
-  // Check for customer actions
-  if (customerText.includes("cancel") || customerText.includes("terminate")) {
-    purpose = "cancel their service"
-  } else if (customerText.includes("complain") || customerText.includes("complaint")) {
-    purpose = "file a complaint"
-  } else if (customerText.includes("refund") || customerText.includes("money back")) {
-    purpose = "request a refund"
-  } else if (customerText.includes("escalate") || customerText.includes("supervisor")) {
-    purpose = "speak to a supervisor"
-  } else if (customerText.includes("clarification") || customerText.includes("explain") || customerText.includes("understand")) {
-    purpose = "get clarification"
-  }
-  
-  // Check for service issues
-  if (customerText.includes("cold food") || customerText.includes("cold pizza")) {
-    reason = "cold food delivery"
-  } else if (customerText.includes("wrong food") || customerText.includes("wrong order") || customerText.includes("ordered") && customerText.includes("got")) {
-    reason = "receiving wrong items"
-  } else if (customerText.includes("damaged") || customerText.includes("spoiled") || customerText.includes("broken")) {
-    reason = "damaged or spoiled items"
-  } else if (customerText.includes("poor service") || customerText.includes("bad experience") || customerText.includes("terrible service")) {
-    reason = "poor service quality"
-  } else if (customerText.includes("billing") || customerText.includes("overcharged") || customerText.includes("wrong charges")) {
-    reason = "billing issues"
-  }
-
-  return `The customer wanted to ${purpose} due to ${reason}.`
-}
-
 function generateFallbackBusinessIntelligence(transcript: any) {
   const utterances = transcript.utterances || []
   const sentimentResults = transcript.sentiment_analysis_results || []
@@ -770,14 +729,14 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
     ])
 
     // Use AI results only, with minimal fallbacks only if AI completely fails
-    let summary = enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : generateFallbackSummary(transcript)
+    let summary = enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : "AI summary generation failed - please try again"
     let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateFallbackBusinessIntelligence(transcript)
     let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractFallbackActionItems(transcript)
 
     // Only use fallbacks if AI analysis completely failed (not just empty results)
     if (summary.includes("AI analysis unavailable")) {
-      console.log("AI summary failed, using fallback")
-      summary = generateFallbackSummary(transcript)
+      console.log("AI summary failed, returning error")
+      summary = "AI summary generation failed - please try again"
     }
 
     // Always recalculate overall as the average of the five categories for consistency

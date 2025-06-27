@@ -728,13 +728,16 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       extractEnhancedActionItems(transcript)
     ])
 
+    console.log("AI Summary status:", enhancedSummary.status)
+    console.log("AI Summary value:", enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : enhancedSummary.reason)
+
     // Use AI results only, with minimal fallbacks only if AI completely fails
     let summary = enhancedSummary.status === 'fulfilled' ? enhancedSummary.value : "AI summary generation failed - please try again"
     let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateFallbackBusinessIntelligence(transcript)
     let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractFallbackActionItems(transcript)
 
-    // Only use fallbacks if AI analysis completely failed (not just empty results)
-    if (summary.includes("AI analysis unavailable")) {
+    // Check if AI summary failed (either Promise rejected or returned error message)
+    if (enhancedSummary.status === 'rejected' || (enhancedSummary.status === 'fulfilled' && enhancedSummary.value.includes("AI analysis unavailable"))) {
       console.log("AI summary failed, returning error")
       summary = "AI summary generation failed - please try again"
     }

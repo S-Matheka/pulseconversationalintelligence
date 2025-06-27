@@ -804,6 +804,33 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       })),
     }
 
+    // Post-process segment sentiment: flag complaints as negative
+    const complaintPatterns = [
+      /i (ordered|requested|expected) .+ (but|and) (got|received) .+/i,
+      /not what i expected/i,
+      /not satisfied/i,
+      /this is wrong/i,
+      /this isn\'t working as advertised/i,
+      /this doesn\'t meet my needs/i,
+      /i want to complain/i,
+      /i want to escalate/i,
+      /i want a refund/i,
+      /i want to cancel/i,
+      /wrong (item|order|product|food)/i,
+      /incorrect (item|order|product|food)/i,
+      /damaged|spoiled|broken/i,
+      /overcharged|wrong charge|billing error/i
+    ]
+    sentiment.segments = sentiment.segments.map((seg: any) => {
+      if (
+        complaintPatterns.some((pat) => pat.test(seg.text)) &&
+        seg.sentiment !== 'NEGATIVE'
+      ) {
+        return { ...seg, sentiment: 'NEGATIVE', confidence: Math.max(seg.confidence, 0.8) }
+      }
+      return seg
+    })
+
     // Enforce: If transcript contains 'no one is telling us anything', force negative sentiment and flag as risk
     const transcriptText = (transcript.text || '').toLowerCase()
     if (transcriptText.includes('no one is telling us anything')) {

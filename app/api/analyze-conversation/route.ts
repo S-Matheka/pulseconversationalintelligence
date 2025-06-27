@@ -269,95 +269,60 @@ function formatTranscriptionWithSpeakers(transcript: any): string {
     .join("\n\n")
 }
 
-// Generate enhanced summary using AssemblyAI auto_chapters
+// Generate enhanced summary using AI with proper prompt
 async function generateEnhancedSummary(transcript: any): Promise<string> {
   const utterances = transcript.utterances || []
-  const chapters = transcript.chapters || []
 
   if (utterances.length === 0) {
     return "No conversation content available for analysis."
   }
 
-  // Use AssemblyAI's auto_chapters if available
-  if (chapters && chapters.length > 0) {
-    const nonAgentRole = inferNonAgentRole(transcript)
-    const nonAgentRoleLower = nonAgentRole.toLowerCase()
-    
-    // Extract the main issue from chapters
-    const mainChapter = chapters[0] // Use the first chapter as the main issue
-    
-    // Clean up the headline to extract the actual issue
-    let mainIssue = mainChapter.headline.toLowerCase()
-    
-    // Remove common conversation starters and extract the core issue
-    mainIssue = mainIssue
-      .replace(/^(i'm calling about|i'm calling to|i need to|i want to|i would like to|i'm here to|i'm calling because)/i, '')
-      .replace(/^(the caller|the customer|the guest|the patient)/i, '')
-      .replace(/^(says|said|mentioning|mention|stating|state)/i, '')
-      .trim()
-    
-    // If the issue is still too long or contains quotes, extract key words
-    if (mainIssue.length > 50 || mainIssue.includes('"') || mainIssue.includes("'")) {
-      // Extract key action words
-      const actionWords = ['cancel', 'refund', 'complaint', 'reschedule', 'change', 'update', 'fix', 'help', 'assist', 'support', 'billing', 'charge', 'payment', 'appointment', 'reservation', 'booking', 'service', 'issue', 'problem']
-      
-      for (const word of actionWords) {
-        if (mainIssue.includes(word)) {
-          mainIssue = word
-          break
-        }
-      }
-      
-      // If no action word found, use a generic term
-      if (mainIssue.length > 20) {
-        mainIssue = 'get assistance'
-      }
-    }
-    
-    // Create a clean summary
-    const summary = `The ${nonAgentRoleLower} wanted to ${mainIssue}.`
-    return summary
-  }
-
-  // Fallback: create a simple summary from the conversation
   const speakerRoles = detectSpeakerRoles(transcript)
+  const agentUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "agent")
   const customerUtterances = utterances.filter((u: any) => speakerRoles[u.speaker] === "customer")
-  const customerText = customerUtterances.map((u: any) => u.text).join(" ").toLowerCase()
-  
+
+  const agentText = agentUtterances.map((u: any) => u.text).join(" ")
+  const customerText = customerUtterances.map((u: any) => u.text).join(" ")
+
+  // Use the same role inference as the transcript section
   const nonAgentRole = inferNonAgentRole(transcript)
   const nonAgentRoleLower = nonAgentRole.toLowerCase()
 
-  // Extract key information from customer utterances
-  let purpose = "get assistance"
-  let reason = "general inquiry"
+  const prompt = `Analyze this conversation and create a concise summary in this exact format: "The [role] called to [action] because of [reason]."
 
-  // Check for customer actions
-  if (customerText.includes("cancel") || customerText.includes("terminate")) {
-    purpose = "cancel their service"
-  } else if (customerText.includes("complain") || customerText.includes("complaint")) {
-    purpose = "file a complaint"
-  } else if (customerText.includes("refund") || customerText.includes("money back")) {
-    purpose = "request a refund"
-  } else if (customerText.includes("escalate") || customerText.includes("supervisor")) {
-    purpose = "speak to a supervisor"
-  } else if (customerText.includes("clarification") || customerText.includes("explain") || customerText.includes("understand")) {
-    purpose = "get clarification"
-  }
+CONVERSATION:
+AGENT: ${agentText}
+${nonAgentRole.toUpperCase()}: ${customerText}
 
-  // Check for service issues
-  if (customerText.includes("cold food") || customerText.includes("cold pizza")) {
-    reason = "cold food delivery"
-  } else if (customerText.includes("wrong food") || customerText.includes("wrong order") || (customerText.includes("ordered") && customerText.includes("got"))) {
-    reason = "receiving wrong items"
-  } else if (customerText.includes("damaged") || customerText.includes("spoiled") || customerText.includes("broken")) {
-    reason = "damaged or spoiled items"
-  } else if (customerText.includes("poor service") || customerText.includes("bad experience") || customerText.includes("terrible service")) {
-    reason = "poor service quality"
-  } else if (customerText.includes("billing") || customerText.includes("overcharged") || customerText.includes("wrong charges")) {
-    reason = "billing issues"
-  }
+Instructions:
+- Use the role: "${nonAgentRoleLower}"
+- Identify the main action the ${nonAgentRoleLower} wanted to perform
+- Identify the specific reason/trigger for the call
+- Use reported speech style (past tense, third person)
+- Be specific about the issue, not generic
+- Format: "The ${nonAgentRoleLower} called to [action] because of [reason]."
 
-  return `The ${nonAgentRoleLower} wanted to ${purpose} due to ${reason}.`
+Examples:
+- "The guest called to cancel the membership because of frequent poor service."
+- "The patient called to reschedule the appointment because of a scheduling conflict."
+- "The customer called to request a refund because of damaged items received."
+- "The guest called to complain about room service because of cold food delivery."
+- "The patient called to discuss medication because of side effects."
+
+Be specific and accurate. Never use the wrong role label.`
+
+  const aiSummary = await callGemmaAPI(prompt)
+  
+  // Post-process to ensure correct role label
+  let summary = aiSummary
+  summary = summary.replace(/customer/gi, nonAgentRoleLower)
+  summary = summary.replace(/Customer/gi, nonAgentRole)
+  summary = summary.replace(/guest/gi, nonAgentRoleLower)
+  summary = summary.replace(/Guest/gi, nonAgentRole)
+  summary = summary.replace(/patient/gi, nonAgentRoleLower)
+  summary = summary.replace(/Patient/gi, nonAgentRole)
+  
+  return summary
 }
 
 // Generate enhanced business intelligence using Gemma AI
@@ -755,8 +720,8 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
       extractEnhancedActionItems(transcript)
     ])
 
-    // Generate summary using AssemblyAI (more reliable)
-    console.log("Generating summary using AssemblyAI...")
+    // Generate summary using AI with proper prompt
+    console.log("Generating summary using AI with proper prompt...")
     const summary = await generateEnhancedSummary(transcript)
     console.log("Summary generated:", summary)
 

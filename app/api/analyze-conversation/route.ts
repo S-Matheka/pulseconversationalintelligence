@@ -53,6 +53,8 @@ async function callGemmaAPI(prompt: string) {
     console.log("Gemma API response data:", JSON.stringify(data, null, 2))
     
     const content = data.choices?.[0]?.message?.content
+    console.log("Gemma API content extracted:", content)
+    
     if (!content) {
       console.error("No content in Gemma API response:", data)
       return "AI analysis unavailable - no content received"
@@ -736,11 +738,15 @@ async function processAudio(audioBuffer: ArrayBuffer, fileName: string) {
     let businessIntelligence = enhancedBusinessIntelligence.status === 'fulfilled' ? enhancedBusinessIntelligence.value : generateFallbackBusinessIntelligence(transcript)
     let actionItems = enhancedActionItems.status === 'fulfilled' ? enhancedActionItems.value : extractFallbackActionItems(transcript)
 
+    console.log("Final summary before failure check:", summary)
+
     // Check if AI summary failed (either Promise rejected or returned error message)
     if (enhancedSummary.status === 'rejected' || (enhancedSummary.status === 'fulfilled' && enhancedSummary.value.includes("AI analysis unavailable"))) {
       console.log("AI summary failed, returning error")
       summary = "AI summary generation failed - please try again"
     }
+
+    console.log("Final summary after failure check:", summary)
 
     // Always recalculate overall as the average of the five categories for consistency
     if (businessIntelligence.qualityScore && businessIntelligence.qualityScore.categories) {

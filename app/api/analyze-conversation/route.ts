@@ -326,6 +326,8 @@ IMPORTANT: Base your summary ONLY on what is actually stated in the transcript. 
   
   console.log("AI Summary raw response:", aiSummary)
   console.log("AI Summary includes 'AI analysis unavailable':", aiSummary.includes("AI analysis unavailable"))
+  console.log("AI Summary length:", aiSummary.length)
+  console.log("AI Summary starts with 'The':", aiSummary.trim().startsWith("The"))
   
   // If AI fails, use intelligent fallback
   if (aiSummary.includes("AI analysis unavailable")) {
@@ -432,8 +434,11 @@ IMPORTANT: Base your summary ONLY on what is actually stated in the transcript. 
       }
     }
     
+    console.log("Using fallback summary:", `The ${nonAgentRoleLower} called to ${action} because of ${reason}.`)
     return `The ${nonAgentRoleLower} called to ${action} because of ${reason}.`
   }
+  
+  console.log("Using AI summary:", aiSummary)
   
   // Post-process to ensure correct role label
   let summary = aiSummary

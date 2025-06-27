@@ -280,10 +280,10 @@ CUSTOMER: ${customerText}
 SENTIMENT ANALYSIS: ${sentimentResults.map((s: any) => `${s.text}: ${s.sentiment} (${Math.round(s.confidence * 100)}%)`).join(', ')}
 
 Instructions:
-- Analyze the conversation context and refer to the non-agent as:
-  - 'patient' if the context is medical/hospital/clinic (mentions of doctor, nurse, treatment, appointment, etc.)
-  - 'guest' if the context is hotel/hospitality (mentions of hotel, room, check-in, reservation, hospitality, etc.)
-  - 'customer' in all other cases (retail, service, general)
+- You MUST infer the correct non-agent role from context:
+  - If the conversation is about medical, hospital, clinic, doctors, nurses, appointments, treatment, or anything healthcare-related, ALWAYS use 'patient' (never use 'customer' or 'guest').
+  - If the conversation is about hotels, rooms, check-in, reservations, hospitality, or anything hotel-related, ALWAYS use 'guest' (never use 'customer' or 'patient').
+  - Only use 'customer' if the context is retail, service, or general business and there are no medical or hospitality clues.
 - Always refer to the agent as 'agent'.
 - Focus on the non-agent's main issue and what triggered the call.
 - Always include specific details: what the non-agent wanted, what went wrong, and any context (e.g., product, service, timing, agent response).
@@ -294,11 +294,13 @@ Instructions:
 
 Examples:
 - "The patient wanted to reschedule their appointment due to a scheduling conflict and lack of communication from the clinic."
+- "The patient wanted to discuss a medication side effect after a recent hospital visit."
 - "The guest wanted a refund because they received a different room than reserved, and no one updated them about the change."
-- "The customer wanted to escalate their complaint after multiple failed delivery attempts and poor communication from the support team."
+- "The guest wanted to escalate a complaint about poor room service and a missed wake-up call."
 - "The customer wanted to clarify a charge on their account after being overcharged for a service they did not receive."
+- "The customer wanted to return a product that was delivered damaged."
 
-Be as specific and accurate as possible. Never be vague or general.`
+Final instruction: If you are unsure, make your best guess based on context, but NEVER use 'customer' if there are any medical or hospitality clues. Be specific and accurate.`
 
   const aiSummary = await callGemmaAPI(prompt)
   
@@ -352,12 +354,13 @@ CUSTOMER: ${customerText}
 SENTIMENT: ${sentimentResults.map((s: any) => `${s.sentiment}`).join(', ')}
 
 Instructions:
-- Analyze the conversation context and refer to the non-agent as:
-  - 'patient' if the context is medical/hospital/clinic (mentions of doctor, nurse, treatment, appointment, etc.)
-  - 'guest' if the context is hotel/hospitality (mentions of hotel, room, check-in, reservation, hospitality, etc.)
-  - 'customer' in all other cases (retail, service, general)
+- You MUST infer the correct non-agent role from context:
+  - If the conversation is about medical, hospital, clinic, doctors, nurses, appointments, treatment, or anything healthcare-related, ALWAYS use 'patient' (never use 'customer' or 'guest').
+  - If the conversation is about hotels, rooms, check-in, reservations, hospitality, or anything hotel-related, ALWAYS use 'guest' (never use 'customer' or 'patient').
+  - Only use 'customer' if the context is retail, service, or general business and there are no medical or hospitality clues.
 - Always refer to the agent as 'agent'.
 - Provide all insights, risks, and recommendations using the correct role label for the non-agent.
+- If you are unsure, make your best guess based on context, but NEVER use 'customer' if there are any medical or hospitality clues.
 
 Look for these specific keywords and issues:
 
@@ -473,12 +476,13 @@ AGENT: ${agentText}
 CUSTOMER: ${customerText}
 
 Instructions:
-- Analyze the conversation context and refer to the non-agent as:
-  - 'patient' if the context is medical/hospital/clinic (mentions of doctor, nurse, treatment, appointment, etc.)
-  - 'guest' if the context is hotel/hospitality (mentions of hotel, room, check-in, reservation, hospitality, etc.)
-  - 'customer' in all other cases (retail, service, general)
+- You MUST infer the correct non-agent role from context:
+  - If the conversation is about medical, hospital, clinic, doctors, nurses, appointments, treatment, or anything healthcare-related, ALWAYS use 'patient' (never use 'customer' or 'guest').
+  - If the conversation is about hotels, rooms, check-in, reservations, hospitality, or anything hotel-related, ALWAYS use 'guest' (never use 'customer' or 'patient').
+  - Only use 'customer' if the context is retail, service, or general business and there are no medical or hospitality clues.
 - Always refer to the agent as 'agent'.
 - Write all action items using the correct role label for the non-agent.
+- If you are unsure, make your best guess based on context, but NEVER use 'customer' if there are any medical or hospitality clues.
 
 Look for these specific issues and keywords:
 
